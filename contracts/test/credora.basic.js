@@ -1,377 +1,393 @@
+// test/credora.basic.js
+// Hardhat + ethers v6 (via @nomicfoundation/hardhat-toolbox)
+
+
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
-describe("Credora Basic Tests", function () {
-  let creditRegistry;
-  let credoraPool;
-  let owner;
-  let student;
-  let investor;
-  let addrs;
+async function timeTravel(seconds) {
+  await network.provider.send("evm_increaseTime", [seconds]);
+  await network.provider.send("evm_mine");
+}
 
-  beforeEach(async function () {
-    // Get signers
-    [owner, student, investor, ...addrs] = await ethers.getSigners();
+describe("Credora (MVP) – CreditRegistry + CredoraPool", function () {
+  let owner, admin, attester, depositor, borrower, other;
+  let usdt, registry, pool;
 
-    // Deploy CreditRegistry
+  // EIP-712 helpers for CreditRegistry.sol (must match contract constants)
+  async function signLimitUpdate({ user, score, creditLimit, expiry, nonce, signer }) {
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+
+    const domain = {
+      name: "CredoraCreditRegistry",
+      version: "1",
+      chainId,
+      verifyingContract: await registry.getAddress(),
+    };
+
+    const types = {
+      LimitUpdate: [
+        { name: "user", type: "address" },
+        { name: "score", type: "uint256" },
+        { name: "creditLimit", type: "uint256" },
+        { name: "expiry", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+      ],
+    };
+
+    const value = { user, score, creditLimit, expiry, nonce };
+    return signer.signTypedData(domain, types, value);
+  }
+
+  async function setBorrowerLimit({ score, limit, ttlSeconds = 3600 }) {
+    const user = borrower.address;
+    const nonce = await registry.currentNonce(user);
+    const now = (await ethers.provider.getBlock("latest")).timestamp;
+    const expiry = now + ttlSeconds;
+
+    const sig = await signLimitUpdate({
+      user,
+      score,
+      creditLimit: limit,
+      expiry,
+      nonce,
+      signer: attester,
+    });
+
+    await registry.connect(borrower).updateLimit(
+      { user, score, creditLimit: limit, expiry, nonce },
+      sig
+    );
+
+    return { nonce, expiry, sig };
+  }
+
+  beforeEach(async () => {
+    [owner, admin, attester, depositor, borrower, other] = await ethers.getSigners();
+
+    // --------------------------
+    // IMPORTANT:
+    // This test assumes you have a MockUSDT contract available in contracts/MockUSDT.sol:
+    //
+    // SPDX-License-Identifier: MIT
+    // pragma solidity ^0.8.20;
+    // import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+    // contract MockUSDT is ERC20 {
+    //   constructor() ERC20("MockUSDT", "USDT") {}
+    //   function mint(address to, uint256 amount) external { _mint(to, amount); }
+    // }
+    // --------------------------
+
+    const MockUSDT = await ethers.getContractFactory("MockUSDT");
+    usdt = await MockUSDT.deploy();
+    await usdt.waitForDeployment();
+
+    // mint to depositor/borrower
+    await usdt.mint(depositor.address, ethers.parseUnits("100000", 18));
+    await usdt.mint(borrower.address, ethers.parseUnits("10000", 18));
+
     const CreditRegistry = await ethers.getContractFactory("CreditRegistry");
-    creditRegistry = await CreditRegistry.deploy();
-    await creditRegistry.waitForDeployment();
+    registry = await CreditRegistry.deploy(attester.address);
+    await registry.waitForDeployment();
 
-    // Deploy CredoraPool
     const CredoraPool = await ethers.getContractFactory("CredoraPool");
-    credoraPool = await CredoraPool.deploy(await creditRegistry.getAddress());
-    await credoraPool.waitForDeployment();
+    pool = await CredoraPool.deploy(
+      await usdt.getAddress(),
+      await registry.getAddress(),
+      admin.address
+    );
+    await pool.waitForDeployment();
 
-    // Authorize CredoraPool in CreditRegistry
-    await creditRegistry.authorizePool(await credoraPool.getAddress(), true);
+    // set short term/grace for testing (admin only)
+    // baseRate, slope, kink, jumpSlope, reserveBps, termSeconds, graceSeconds
+    await pool.connect(admin).setParams(
+      ethers.parseUnits("0.05", 18),  // 5% base
+      ethers.parseUnits("0.20", 18),  // 20% slope
+      ethers.parseUnits("0.80", 18),  // 80% kink
+      ethers.parseUnits("0.50", 18),  // 50% jump slope
+      800,                            // 8% reserve cut from interest
+      300,                            // 5 min term
+      120                             // 2 min grace
+    );
   });
 
-  describe("CreditRegistry", function () {
-    describe("Student Registration", function () {
-      it("Should register a new student", async function () {
-        await creditRegistry.connect(student).registerStudent();
-        const profile = await creditRegistry.getCreditProfile(student.address);
-        
-        expect(profile.isActive).to.equal(true);
-        expect(profile.creditScore).to.equal(500);
-        expect(profile.student).to.equal(student.address);
+  describe("CreditRegistry", () => {
+    it("updates limit with valid signature and increments nonce", async () => {
+      const user = borrower.address;
+      const nonce0 = await registry.currentNonce(user);
+
+      const score = 850;
+      const limit = ethers.parseUnits("500", 18);
+      const now = (await ethers.provider.getBlock("latest")).timestamp;
+      const expiry = now + 3600;
+
+      const sig = await signLimitUpdate({
+        user,
+        score,
+        creditLimit: limit,
+        expiry,
+        nonce: nonce0,
+        signer: attester,
       });
 
-      it("Should not allow duplicate registration", async function () {
-        await creditRegistry.connect(student).registerStudent();
-        
-        await expect(
-          creditRegistry.connect(student).registerStudent()
-        ).to.be.revertedWith("Student already registered");
-      });
+      await expect(
+        registry.connect(borrower).updateLimit({ user, score, creditLimit: limit, expiry, nonce: nonce0 }, sig)
+      ).to.emit(registry, "LimitUpdated");
 
-      it("Should increment total students count", async function () {
-        await creditRegistry.connect(student).registerStudent();
-        expect(await creditRegistry.totalStudents()).to.equal(1);
-        
-        await creditRegistry.connect(investor).registerStudent();
-        expect(await creditRegistry.totalStudents()).to.equal(2);
-      });
+      const nonce1 = await registry.currentNonce(user);
+      expect(nonce1).to.equal(nonce0 + 1n);
+
+      expect(await registry.limitOf(user)).to.equal(limit);
+      expect(await registry.scoreOf(user)).to.equal(score);
+      expect(await registry.expiryOf(user)).to.equal(expiry);
+      expect(await registry.isValid(user)).to.equal(true);
     });
 
-    describe("Credit Score Management", function () {
-      beforeEach(async function () {
-        await creditRegistry.connect(student).registerStudent();
+    it("rejects expired attestation", async () => {
+      const user = borrower.address;
+      const nonce = await registry.currentNonce(user);
+      const score = 700;
+      const limit = ethers.parseUnits("200", 18);
+      const now = (await ethers.provider.getBlock("latest")).timestamp;
+      const expiry = now - 1;
+
+      const sig = await signLimitUpdate({
+        user,
+        score,
+        creditLimit: limit,
+        expiry,
+        nonce,
+        signer: attester,
       });
 
-      it("Should check eligibility for loan", async function () {
-        const eligible = await creditRegistry.isEligibleForLoan(
-          student.address,
-          ethers.parseEther("10")
-        );
-        expect(eligible).to.equal(true);
-      });
-
-      it("Should calculate max loan amount based on credit score", async function () {
-        const maxLoan = await creditRegistry.getMaxLoanAmount(student.address);
-        expect(maxLoan).to.equal(ethers.parseEther("25000"));
-      });
+      await expect(
+        registry.connect(borrower).updateLimit({ user, score, creditLimit: limit, expiry, nonce }, sig)
+      ).to.be.revertedWithCustomError(registry, "ExpiredAttestation");
     });
 
-    describe("Pool Authorization", function () {
-      it("Should authorize a pool", async function () {
-        const poolAddress = await credoraPool.getAddress();
-        expect(await creditRegistry.authorizedPools(poolAddress)).to.equal(true);
+    it("rejects invalid signature", async () => {
+      const user = borrower.address;
+      const nonce = await registry.currentNonce(user);
+      const score = 700;
+      const limit = ethers.parseUnits("200", 18);
+      const now = (await ethers.provider.getBlock("latest")).timestamp;
+      const expiry = now + 3600;
+
+      // sign with wrong signer
+      const sig = await signLimitUpdate({
+        user,
+        score,
+        creditLimit: limit,
+        expiry,
+        nonce,
+        signer: other,
       });
 
-      it("Should only allow owner to authorize pools", async function () {
-        await expect(
-          creditRegistry.connect(student).authorizePool(student.address, true)
-        ).to.be.revertedWith("Only owner can call this function");
-      });
-    });
-  });
-
-  describe("CredoraPool", function () {
-    describe("Pool Creation", function () {
-      it("Should create a new pool", async function () {
-        const tx = await credoraPool.createPool(
-          "Education Fund",
-          500, // 5% interest
-          ethers.parseEther("1"), // 1 ETH min investment
-          ethers.parseEther("10"), // 10 ETH max loan
-          30 * 24 * 60 * 60 // 30 days duration
-        );
-
-        const receipt = await tx.wait();
-        const event = receipt.logs.find(log => {
-          try {
-            return credoraPool.interface.parseLog(log).name === "PoolCreated";
-          } catch {
-            return false;
-          }
-        });
-
-        expect(event).to.not.be.undefined;
-        expect(await credoraPool.poolCount()).to.equal(1);
-      });
-
-      it("Should store correct pool details", async function () {
-        await credoraPool.createPool(
-          "Education Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
-
-        const pool = await credoraPool.getPool(1);
-        expect(pool.name).to.equal("Education Fund");
-        expect(pool.interestRate).to.equal(500);
-        expect(pool.isActive).to.equal(true);
-        expect(pool.creator).to.equal(owner.address);
-      });
+      await expect(
+        registry.connect(borrower).updateLimit({ user, score, creditLimit: limit, expiry, nonce }, sig)
+      ).to.be.revertedWithCustomError(registry, "InvalidSignature");
     });
 
-    describe("Investment", function () {
-      beforeEach(async function () {
-        await credoraPool.createPool(
-          "Education Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
+    it("rejects nonce mismatch (replay protection)", async () => {
+      const user = borrower.address;
+      const nonce = await registry.currentNonce(user);
+      const score = 700;
+      const limit = ethers.parseUnits("200", 18);
+      const now = (await ethers.provider.getBlock("latest")).timestamp;
+      const expiry = now + 3600;
+
+      const sig = await signLimitUpdate({
+        user,
+        score,
+        creditLimit: limit,
+        expiry,
+        nonce,
+        signer: attester,
       });
 
-      it("Should allow investors to invest in pool", async function () {
-        const investmentAmount = ethers.parseEther("5");
-        
-        await credoraPool.connect(investor).invest(1, {
-          value: investmentAmount
-        });
+      await registry.connect(borrower).updateLimit({ user, score, creditLimit: limit, expiry, nonce }, sig);
 
-        const pool = await credoraPool.getPool(1);
-        expect(pool.totalFunds).to.equal(investmentAmount);
-        expect(pool.availableFunds).to.equal(investmentAmount);
-      });
-
-      it("Should reject investment below minimum", async function () {
-        await expect(
-          credoraPool.connect(investor).invest(1, {
-            value: ethers.parseEther("0.5")
-          })
-        ).to.be.revertedWith("Investment below minimum");
-      });
-
-      it("Should track investor investments", async function () {
-        await credoraPool.connect(investor).invest(1, {
-          value: ethers.parseEther("5")
-        });
-
-        const investments = await credoraPool.getInvestments(investor.address);
-        expect(investments.length).to.equal(1);
-        expect(investments[0].amount).to.equal(ethers.parseEther("5"));
-      });
-    });
-
-    describe("Loan Management", function () {
-      beforeEach(async function () {
-        // Register student
-        await creditRegistry.connect(student).registerStudent();
-        
-        // Create pool
-        await credoraPool.createPool(
-          "Education Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
-        
-        // Add funds to pool
-        await credoraPool.connect(investor).invest(1, {
-          value: ethers.parseEther("20")
-        });
-      });
-
-      it("Should allow eligible student to request loan", async function () {
-        const loanAmount = ethers.parseEther("5");
-        await credoraPool.connect(student).requestLoan(1, loanAmount);
-        
-        expect(await credoraPool.loanCount()).to.equal(1);
-        const loan = await credoraPool.getLoan(1);
-        expect(loan.borrower).to.equal(student.address);
-        expect(loan.principal).to.equal(loanAmount);
-      });
-
-      it("Should calculate correct interest", async function () {
-        const loanAmount = ethers.parseEther("10");
-        await credoraPool.connect(student).requestLoan(1, loanAmount);
-        
-        const loan = await credoraPool.getLoan(1);
-        const expectedInterest = ethers.parseEther("0.5"); // 5% of 10 ETH
-        expect(loan.interest).to.equal(expectedInterest);
-      });
-
-      it("Should not allow loan exceeding pool max", async function () {
-        await expect(
-          credoraPool.connect(student).requestLoan(1, ethers.parseEther("15"))
-        ).to.be.revertedWith("Amount exceeds pool limit");
-      });
-
-      it("Should not allow loan if insufficient pool funds", async function () {
-        // Create a new pool with less funds
-        await credoraPool.createPool(
-          "Small Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
-        
-        await credoraPool.connect(investor).invest(2, {
-          value: ethers.parseEther("2")
-        });
-
-        await expect(
-          credoraPool.connect(student).requestLoan(2, ethers.parseEther("5"))
-        ).to.be.revertedWith("Insufficient pool funds");
-      });
-    });
-
-    describe("Loan Approval and Disbursement", function () {
-      beforeEach(async function () {
-        await creditRegistry.connect(student).registerStudent();
-        
-        await credoraPool.createPool(
-          "Education Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
-        
-        await credoraPool.connect(investor).invest(1, {
-          value: ethers.parseEther("20")
-        });
-        
-        await credoraPool.connect(student).requestLoan(1, ethers.parseEther("5"));
-      });
-
-      it("Should allow owner to approve loan", async function () {
-        const studentBalanceBefore = await ethers.provider.getBalance(student.address);
-        
-        await credoraPool.approveLoan(1);
-        
-        const studentBalanceAfter = await ethers.provider.getBalance(student.address);
-        expect(studentBalanceAfter).to.be.gt(studentBalanceBefore);
-      });
-
-      it("Should reduce available pool funds after approval", async function () {
-        const poolBefore = await credoraPool.getPool(1);
-        await credoraPool.approveLoan(1);
-        const poolAfter = await credoraPool.getPool(1);
-        
-        expect(poolAfter.availableFunds).to.equal(
-          poolBefore.availableFunds - ethers.parseEther("5")
-        );
-      });
-
-      it("Should only allow owner to approve loans", async function () {
-        await expect(
-          credoraPool.connect(student).approveLoan(1)
-        ).to.be.revertedWith("Only owner can call this function");
-      });
-    });
-
-    describe("Loan Repayment", function () {
-      beforeEach(async function () {
-        await creditRegistry.connect(student).registerStudent();
-        
-        await credoraPool.createPool(
-          "Education Fund",
-          500,
-          ethers.parseEther("1"),
-          ethers.parseEther("10"),
-          30 * 24 * 60 * 60
-        );
-        
-        await credoraPool.connect(investor).invest(1, {
-          value: ethers.parseEther("20")
-        });
-        
-        await credoraPool.connect(student).requestLoan(1, ethers.parseEther("5"));
-        await credoraPool.approveLoan(1);
-      });
-
-      it("Should allow borrower to repay loan", async function () {
-        const repaymentAmount = ethers.parseEther("2");
-        
-        await credoraPool.connect(student).repayLoan(1, {
-          value: repaymentAmount
-        });
-        
-        const loan = await credoraPool.getLoan(1);
-        expect(loan.amountRepaid).to.equal(repaymentAmount);
-      });
-
-      it("Should mark loan as inactive after full repayment", async function () {
-        const loan = await credoraPool.getLoan(1);
-        
-        await credoraPool.connect(student).repayLoan(1, {
-          value: loan.totalAmount
-        });
-        
-        const updatedLoan = await credoraPool.getLoan(1);
-        expect(updatedLoan.isActive).to.equal(false);
-      });
-
-      it("Should only allow borrower to repay their own loan", async function () {
-        await expect(
-          credoraPool.connect(investor).repayLoan(1, {
-            value: ethers.parseEther("1")
-          })
-        ).to.be.revertedWith("Only borrower can repay");
-      });
+      // try replay with same nonce/signature
+      await expect(
+        registry.connect(borrower).updateLimit({ user, score, creditLimit: limit, expiry, nonce }, sig)
+      ).to.be.revertedWithCustomError(registry, "NonceMismatch");
     });
   });
 
-  describe("Integration Tests", function () {
-    it("Should handle complete loan lifecycle", async function () {
-      // Register student
-      await creditRegistry.connect(student).registerStudent();
-      
-      // Create pool
-      await credoraPool.createPool(
-        "Education Fund",
-        500,
-        ethers.parseEther("1"),
-        ethers.parseEther("10"),
-        30 * 24 * 60 * 60
+  describe("Pool: deposits/withdrawals", () => {
+    it("allows deposit and withdraw when no loans outstanding", async () => {
+      const amount = ethers.parseUnits("1000", 18);
+
+      await usdt.connect(depositor).approve(await pool.getAddress(), amount);
+      await expect(pool.connect(depositor).deposit(amount)).to.emit(pool, "Deposited");
+
+      const shares = await pool.sharesOf(depositor.address);
+      expect(shares).to.be.gt(0n);
+
+      await expect(pool.connect(depositor).withdraw(shares)).to.emit(pool, "Withdrawn");
+
+      const sharesAfter = await pool.sharesOf(depositor.address);
+      expect(sharesAfter).to.equal(0n);
+    });
+
+    it("blocks withdraw if free cash is insufficient due to outstanding loans", async () => {
+      const depositAmt = ethers.parseUnits("1000", 18);
+
+      await usdt.connect(depositor).approve(await pool.getAddress(), depositAmt);
+      await pool.connect(depositor).deposit(depositAmt);
+
+      // set borrower limit and borrow most liquidity
+      await setBorrowerLimit({ score: 900, limit: ethers.parseUnits("900", 18) });
+
+      await pool.connect(borrower).borrow(ethers.parseUnits("850", 18));
+
+      const shares = await pool.sharesOf(depositor.address);
+
+      // trying to withdraw all shares should revert due to insufficient available cash
+      await expect(pool.connect(depositor).withdraw(shares)).to.be.revertedWithCustomError(
+        pool,
+        "InsufficientLiquidity"
       );
-      
-      // Invest in pool
-      await credoraPool.connect(investor).invest(1, {
-        value: ethers.parseEther("20")
-      });
-      
-      // Request loan
-      await credoraPool.connect(student).requestLoan(1, ethers.parseEther("5"));
-      
-      // Approve loan
-      await credoraPool.approveLoan(1);
-      
-      // Check credit history
-      const profileBefore = await creditRegistry.getCreditProfile(student.address);
-      expect(profileBefore.totalBorrowed).to.equal(ethers.parseEther("5"));
-      
-      // Repay loan
-      const loan = await credoraPool.getLoan(1);
-      await credoraPool.connect(student).repayLoan(1, {
-        value: loan.totalAmount
-      });
-      
-      // Check final state
-      const profileAfter = await creditRegistry.getCreditProfile(student.address);
-      expect(profileAfter.totalRepaid).to.equal(loan.totalAmount);
-      expect(profileAfter.creditScore).to.be.gt(profileBefore.creditScore);
+    });
+  });
+
+  describe("Pool: borrowing/repayment/interest", () => {
+    beforeEach(async () => {
+      // seed liquidity
+      const depositAmt = ethers.parseUnits("5000", 18);
+      await usdt.connect(depositor).approve(await pool.getAddress(), depositAmt);
+      await pool.connect(depositor).deposit(depositAmt);
+    });
+
+    it("rejects borrow if borrower has no valid limit", async () => {
+      await expect(pool.connect(borrower).borrow(ethers.parseUnits("10", 18)))
+        .to.be.revertedWithCustomError(pool, "LimitInvalid");
+    });
+
+    it("allows borrow within limit and rejects beyond limit", async () => {
+      await setBorrowerLimit({ score: 850, limit: ethers.parseUnits("300", 18) });
+
+      await expect(pool.connect(borrower).borrow(ethers.parseUnits("250", 18))).to.emit(pool, "Borrowed");
+
+      await expect(pool.connect(borrower).borrow(ethers.parseUnits("100", 18)))
+        .to.be.revertedWithCustomError(pool, "CreditExceeded");
+    });
+
+    it("accrues interest over time and repays with reserve cut from interest", async () => {
+      await setBorrowerLimit({ score: 900, limit: ethers.parseUnits("1000", 18) });
+
+      const borrowAmt = ethers.parseUnits("500", 18);
+      await pool.connect(borrower).borrow(borrowAmt);
+
+      // time passes -> interest accrues
+      await timeTravel(3600); // 1 hour
+      await pool.accrue();
+
+      const due = await pool.userTotalDebt(borrower.address);
+      expect(due).to.be.gt(borrowAmt);
+
+      const interestDue = await pool.userInterestDue(borrower.address);
+      expect(interestDue).to.be.gt(0n);
+
+      // repay full
+      await usdt.connect(borrower).approve(await pool.getAddress(), due);
+      const reserveBefore = await pool.reserveBalance();
+
+      await expect(pool.connect(borrower).repay(due)).to.emit(pool, "Repaid");
+
+      const reserveAfter = await pool.reserveBalance();
+      expect(reserveAfter).to.be.gt(reserveBefore);
+
+      expect(await pool.userTotalDebt(borrower.address)).to.equal(0n);
+      expect(await pool.userPrincipal(borrower.address)).to.equal(0n);
+      expect(await pool.dueAt(borrower.address)).to.equal(0n);
+    });
+
+    it("repay caps at amount due (overpay safe)", async () => {
+      await setBorrowerLimit({ score: 900, limit: ethers.parseUnits("1000", 18) });
+
+      const borrowAmt = ethers.parseUnits("200", 18);
+      await pool.connect(borrower).borrow(borrowAmt);
+
+      await timeTravel(600);
+      await pool.accrue();
+
+      const due = await pool.userTotalDebt(borrower.address);
+      const overpay = due + ethers.parseUnits("100", 18);
+
+      await usdt.connect(borrower).approve(await pool.getAddress(), overpay);
+      await pool.connect(borrower).repay(overpay);
+
+      expect(await pool.userTotalDebt(borrower.address)).to.equal(0n);
+    });
+
+    it("pauses borrowing when admin sets borrowPaused", async () => {
+      await setBorrowerLimit({ score: 900, limit: ethers.parseUnits("1000", 18) });
+
+      await pool.connect(admin).setBorrowPaused(true);
+      await expect(pool.connect(borrower).borrow(ethers.parseUnits("10", 18)))
+        .to.be.revertedWithCustomError(pool, "BorrowPaused");
+
+      await pool.connect(admin).setBorrowPaused(false);
+      await expect(pool.connect(borrower).borrow(ethers.parseUnits("10", 18)))
+        .to.emit(pool, "Borrowed");
+    });
+  });
+
+  describe("Defaults (MVP write-off)", () => {
+    beforeEach(async () => {
+      // seed liquidity
+      const depositAmt = ethers.parseUnits("3000", 18);
+      await usdt.connect(depositor).approve(await pool.getAddress(), depositAmt);
+      await pool.connect(depositor).deposit(depositAmt);
+
+      await setBorrowerLimit({ score: 850, limit: ethers.parseUnits("1000", 18) });
+      await pool.connect(borrower).borrow(ethers.parseUnits("500", 18));
+
+      // accrue some interest so default includes interest too
+      await timeTravel(600);
+      await pool.accrue();
+    });
+
+    it("cannot write off before due+grace", async () => {
+      expect(await pool.isInDefault(borrower.address)).to.equal(false);
+      await expect(pool.connect(admin).writeOffDefault(borrower.address))
+        .to.be.revertedWithCustomError(pool, "NotInDefault");
+    });
+
+    it("can write off after due+grace; reserve absorbs first loss", async () => {
+      // force into default: term=300, grace=120 => travel beyond 420
+      await timeTravel(500);
+      await pool.accrue();
+
+      expect(await pool.isInDefault(borrower.address)).to.equal(true);
+
+      const reserveBefore = await pool.reserveBalance();
+      const debtBefore = await pool.userTotalDebt(borrower.address);
+      expect(debtBefore).to.be.gt(0n);
+
+      await expect(pool.connect(admin).writeOffDefault(borrower.address))
+        .to.emit(pool, "DefaultWrittenOff");
+
+      // debt cleared
+      expect(await pool.userTotalDebt(borrower.address)).to.equal(0n);
+      expect(await pool.userPrincipal(borrower.address)).to.equal(0n);
+      expect(await pool.dueAt(borrower.address)).to.equal(0n);
+
+      const reserveAfter = await pool.reserveBalance();
+      // reserve should decrease by reserveUsed (if it had any). It might be 0 in early stages.
+      expect(reserveAfter).to.be.at.most(reserveBefore);
+
+      // total debt should drop
+      expect(await pool.totalDebt()).to.equal(0n);
+    });
+
+    it("only admin can write off", async () => {
+      await timeTravel(500);
+      await pool.accrue();
+
+      await expect(pool.connect(other).writeOffDefault(borrower.address))
+        .to.be.revertedWithCustomError(pool, "NotAdmin");
     });
   });
 });

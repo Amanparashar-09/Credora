@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Smart contracts for Credora - Decentralized Educational Credit Platform",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
