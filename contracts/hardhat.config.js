@@ -5,4 +5,10 @@ module.exports = {
     version: "0.8.20",
     settings: { optimizer: { enabled: true, runs: 200 } },
   },
+  paths: {
+    sources: "./main",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
+  },
 };
