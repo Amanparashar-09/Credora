@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+numpy
+requests
+python-dotenv
+pydantic
+PyMuPDF
+torch
+transformers
+sentence-transformers
+scikit-learn
