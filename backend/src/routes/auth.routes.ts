@@ -82,8 +82,8 @@ router.post('/login', authLimiter, async (req: Request, res: Response, next: Nex
         address: normalizedAddress,
         role,
       },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      JWT_SECRET as string,
+      { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
     );
 
     res.json({

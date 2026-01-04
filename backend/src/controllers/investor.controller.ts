@@ -3,7 +3,6 @@ import { AuthRequest } from '../middleware/auth';
 import { Investor } from '../models/Investor';
 import { NotFoundError } from '../utils/errors';
 import { blockchainService } from '../services/blockchainService';
-import { logger } from '../utils/logger';
 
 export const investorController = {
   /**
@@ -74,7 +73,7 @@ export const investorController = {
   /**
    * Get available pools
    */
-  async getPools(req: AuthRequest, res: Response, next: NextFunction) {
+  async getPools(_req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const poolStats = await blockchainService.getPoolStats();
 
@@ -98,7 +97,7 @@ export const investorController = {
   /**
    * Get specific pool stats
    */
-  async getPoolStats(req: AuthRequest, res: Response, next: NextFunction) {
+  async getPoolStats(_req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const poolStats = await blockchainService.getPoolStats();
 
@@ -195,11 +194,13 @@ export const investorController = {
         blockchainService.getInvestorBalance(req.user!.address),
       ]);
 
-      const totalLiquidity = parseFloat(poolStats.totalLiquidity);
       const investorShares = parseFloat(investorBalance.shares);
       const totalShares = parseFloat(poolStats.totalShares);
       
       const poolOwnership = totalShares > 0 ? (investorShares / totalShares) * 100 : 0;
+      const utilizationRate = typeof poolStats.utilizationRate === 'string' 
+        ? parseFloat(poolStats.utilizationRate) 
+        : poolStats.utilizationRate;
 
       res.json({
         success: true,
@@ -212,8 +213,8 @@ export const investorController = {
           },
           projections: {
             estimatedAnnualReturn: poolStats.currentInterestRate,
-            riskLevel: parseFloat(poolStats.utilizationRate) > 85 ? 'high' : 
-                       parseFloat(poolStats.utilizationRate) > 70 ? 'medium' : 'low',
+            riskLevel: utilizationRate > 85 ? 'high' : 
+                       utilizationRate > 70 ? 'medium' : 'low',
           },
         },
       });

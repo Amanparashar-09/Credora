@@ -56,7 +56,7 @@ app.use(`/api/${API_VERSION}/student`, studentRoutes);
 app.use(`/api/${API_VERSION}/investor`, investorRoutes);
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     message: 'Credora Backend API',
     version: API_VERSION,

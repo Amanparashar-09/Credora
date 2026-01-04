@@ -12,7 +12,7 @@ const upload = multer({
   limits: {
     fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = (process.env.ALLOWED_FILE_TYPES || '.pdf,.doc,.docx,.jpg,.jpeg,.png').split(',');
     const fileExt = '.' + file.originalname.split('.').pop()?.toLowerCase();
     

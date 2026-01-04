@@ -1,6 +1,6 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document as MongooseDocument, Schema } from 'mongoose';
 
-export interface IDocument extends Document {
+export interface IDocument extends MongooseDocument {
   studentAddress: string;
   documentType: 'resume' | 'certificate' | 'transcript' | 'id' | 'other';
   fileName: string;
