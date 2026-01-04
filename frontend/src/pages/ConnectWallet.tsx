@@ -5,20 +5,57 @@ import { Logo } from "@/components/Logo";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/lib/userContext";
 import { useState } from "react";
+import blockchainService from "@/services/blockchain.service";
+import authService from "@/services/auth.service";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ConnectWallet() {
   const navigate = useNavigate();
   const { setWalletAddress, setRole } = useUser();
+  const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<"connect" | "role">("connect");
+  const [currentAddress, setCurrentAddress] = useState<string>("");
 
   const handleConnect = async () => {
     setIsConnecting(true);
-    // Simulate wallet connection
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setWalletAddress("0x1234...5678");
-    setIsConnecting(false);
-    setStep("role");
+    
+    try {
+      // Connect to MetaMask
+      const { address } = await blockchainService.connectWallet();
+      setCurrentAddress(address);
+      
+      // Get nonce from backend
+      const nonce = await authService.getNonce(address);
+      
+      // Sign nonce with wallet
+      const message = `Credora authentication nonce: ${nonce}`;
+      const signature = await blockchainService.signMessage(message);
+      
+      // Login with signature
+      await authService.login({
+        address,
+        signature,
+        nonce,
+      });
+      
+      setWalletAddress(address);
+      setStep("role");
+      
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully authenticated with your wallet.",
+      });
+    } catch (error: any) {
+      console.error("Connection failed:", error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to connect wallet. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   const handleRoleSelect = (selectedRole: "student" | "investor") => {

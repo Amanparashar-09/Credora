@@ -9,35 +9,79 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const creditFactors = [
-  {
-    factor: "Academic Performance",
-    score: 92,
-    impact: "High",
-    description: "Your 9.2 CGPA indicates strong academic discipline",
-  },
-  {
-    factor: "GitHub Activity",
-    score: 85,
-    impact: "High",
-    description: "156 commits and 12 active repositories show consistency",
-  },
-  {
-    factor: "Work Experience",
-    score: 78,
-    impact: "Medium",
-    description: "3 internships demonstrate professional experience",
-  },
-  {
-    factor: "Repayment History",
-    score: 95,
-    impact: "High",
-    description: "Perfect on-time payments on previous slices",
-  },
-];
+import { useState, useEffect } from "react";
+import studentService from "@/services/student.service";
+import { formatUSDT } from "@/utils/currency";
+import type { CreditStatus } from "@/types/api.types";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CreditDetails() {
+  const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchCreditStatus = async () => {
+      try {
+        setIsLoading(true);
+        const data = await studentService.getCreditStatus();
+        setCreditStatus(data);
+      } catch (err: any) {
+        console.error("Failed to fetch credit status:", err);
+        toast({
+          title: "Error",
+          description: "Failed to load credit status",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCreditStatus();
+  }, []);
+
+  const handleSubmitForScoring = async () => {
+    try {
+      setIsSubmitting(true);
+      const result = await studentService.submitForScoring();
+      toast({
+        title: "Scoring Requested",
+        description: result.message,
+      });
+    } catch (err: any) {
+      console.error("Failed to submit for scoring:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to submit for scoring",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <StudentLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </StudentLayout>
+    );
+  }
+
+  if (!creditStatus) {
+    return (
+      <StudentLayout>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-red-500">Failed to load credit status</p>
+        </div>
+      </StudentLayout>
+    );
+  }
+
   return (
     <StudentLayout>
       <div className="max-w-5xl mx-auto space-y-8">
@@ -55,29 +99,37 @@ export default function CreditDetails() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Your Credit Limit</p>
-                  <h2 className="text-3xl font-bold">₹2,50,000</h2>
+                  <h2 className="text-3xl font-bold">{formatUSDT(parseFloat(creditStatus.limit))}</h2>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 mt-6">
                 <div className="p-4 rounded-xl bg-secondary/50">
                   <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
-                  <p className="text-xl font-semibold">8.5% p.a.</p>
+                  <p className="text-xl font-semibold">{creditStatus.interestRate}% p.a.</p>
                 </div>
                 <div className="p-4 rounded-xl bg-secondary/50">
-                  <p className="text-xs text-muted-foreground mb-1">Tenure Options</p>
-                  <p className="text-xl font-semibold">3-24 months</p>
+                  <p className="text-xs text-muted-foreground mb-1">Credit Score</p>
+                  <p className="text-xl font-semibold">{creditStatus.score}/900</p>
                 </div>
               </div>
             </div>
             <div className="flex-1 lg:max-w-xs">
               <div className="bg-credora-emerald/5 border border-credora-emerald/20 rounded-2xl p-6 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-credora-emerald/10 flex items-center justify-center">
-                  <span className="text-3xl font-bold text-credora-emerald">A+</span>
+                  <span className="text-3xl font-bold text-credora-emerald">{creditStatus.grade}</span>
                 </div>
                 <h3 className="font-semibold mb-1">Credit Grade</h3>
                 <p className="text-sm text-muted-foreground">
-                  Top 5% of all students on Credora
+                  Based on your credit score and history
                 </p>
+                <Button 
+                  onClick={handleSubmitForScoring}
+                  disabled={isSubmitting}
+                  className="mt-4 w-full"
+                  size="sm"
+                >
+                  {isSubmitting ? "Submitting..." : "Request Re-scoring"}
+                </Button>
               </div>
             </div>
           </div>

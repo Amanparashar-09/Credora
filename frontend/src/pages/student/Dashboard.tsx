@@ -12,50 +12,62 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-
-const recentTransactions = [
-  {
-    id: 1,
-    type: "credit",
-    description: "Laptop Purchase - Amazon",
-    amount: 45000,
-    date: "Dec 24, 2024",
-    status: "completed",
-  },
-  {
-    id: 2,
-    type: "repayment",
-    description: "Slice Payment #3",
-    amount: -5000,
-    date: "Dec 20, 2024",
-    status: "completed",
-  },
-  {
-    id: 3,
-    type: "credit",
-    description: "Course Fee - Coursera",
-    amount: 15000,
-    date: "Dec 15, 2024",
-    status: "completed",
-  },
-  {
-    id: 4,
-    type: "repayment",
-    description: "Slice Payment #2",
-    amount: -5000,
-    date: "Dec 10, 2024",
-    status: "completed",
-  },
-];
-
-const badges = [
-  { name: "First Credit", icon: "🎯", earned: true },
-  { name: "On-Time Payer", icon: "⏰", earned: true },
-  { name: "GitHub Active", icon: "💻", earned: true },
-  { name: "Top 10%", icon: "🏆", earned: false },
-];
+import { useState, useEffect } from "react";
+import studentService from "@/services/student.service";
+import { formatUSDT } from "@/utils/currency";
+import type { StudentDashboard as DashboardData } from "@/types/api.types";
+import { cn } from "@/lib/utils";
 
 export default function StudentDashboard() {
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setIsLoading(true);
+        const data = await studentService.getDashboard();
+        setDashboardData(data);
+      } catch (err: any) {
+        console.error("Failed to fetch dashboard:", err);
+        setError(err.message || "Failed to load dashboard");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <StudentLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading dashboard...</p>
+          </div>
+        </div>
+      </StudentLayout>
+    );
+  }
+
+  if (error || !dashboardData) {
+    return (
+      <StudentLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error || "Failed to load dashboard"}</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        </div>
+      </StudentLayout>
+    );
+  }
+
+  const { credit, borrowing, recentTransactions, badges } = dashboardData;
+
   return (
     <StudentLayout>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -68,15 +80,15 @@ export default function StudentDashboard() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
               <p className="text-primary-foreground/70 mb-2">Available Credit</p>
-              <h2 className="text-4xl lg:text-5xl font-bold mb-4">₹1,75,000</h2>
+              <h2 className="text-4xl lg:text-5xl font-bold mb-4">{formatUSDT(parseFloat(credit.available))}</h2>
               <div className="flex items-center gap-4">
                 <div className="text-sm">
                   <span className="text-primary-foreground/70">Total Limit: </span>
-                  <span className="font-medium">₹2,50,000</span>
+                  <span className="font-medium">{formatUSDT(parseFloat(credit.limit))}</span>
                 </div>
                 <div className="text-sm">
                   <span className="text-primary-foreground/70">Used: </span>
-                  <span className="font-medium">₹75,000</span>
+                  <span className="font-medium">{formatUSDT(parseFloat(credit.used))}</span>
                 </div>
               </div>
             </div>
@@ -109,7 +121,7 @@ export default function StudentDashboard() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Reputation Score"
-            value="847"
+            value={credit.score.toString()}
             subValue="/ 900"
             icon={Award}
             trend={{ value: 12, isPositive: true }}
@@ -117,20 +129,20 @@ export default function StudentDashboard() {
           />
           <StatCard
             label="Outstanding Balance"
-            value="₹75,000"
+            value={formatUSDT(parseFloat(borrowing.totalBorrowed))}
             icon={CreditCard}
             variant="amber"
           />
           <StatCard
             label="Next Slice Due"
-            value="₹5,000"
-            subValue="in 7 days"
+            value={formatUSDT(parseFloat(borrowing.nextPaymentAmount))}
+            subValue={new Date(borrowing.nextPaymentDue).toLocaleDateString()}
             icon={Clock}
             variant="blue"
           />
           <StatCard
             label="Interest Rate"
-            value="8.5%"
+            value={`${credit.interestRate}%`}
             subValue="per annum"
             icon={TrendingUp}
             variant="purple"
@@ -155,7 +167,7 @@ export default function StudentDashboard() {
               </Link>
             </div>
             <div className="space-y-4">
-              {recentTransactions.map((tx) => (
+              {recentTransactions.slice(0, 4).map((tx) => (
                 <div
                   key={tx.id}
                   className="flex items-center justify-between py-3 border-b border-border last:border-0"
@@ -164,29 +176,29 @@ export default function StudentDashboard() {
                     <div
                       className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center",
-                        tx.type === "credit"
+                        tx.type === "borrow"
                           ? "bg-credora-amber/10"
                           : "bg-credora-emerald/10"
                       )}
                     >
-                      {tx.type === "credit" ? (
+                      {tx.type === "borrow" ? (
                         <ArrowUpRight className="w-5 h-5 text-credora-amber" />
                       ) : (
                         <ArrowDownRight className="w-5 h-5 text-credora-emerald" />
                       )}
                     </div>
                     <div>
-                      <p className="font-medium text-sm">{tx.description}</p>
-                      <p className="text-xs text-muted-foreground">{tx.date}</p>
+                      <p className="font-medium text-sm">{tx.type === "borrow" ? "Borrowed" : "Repaid"}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()}</p>
                     </div>
                   </div>
                   <p
                     className={cn(
                       "font-semibold",
-                      tx.amount > 0 ? "text-credora-amber" : "text-credora-emerald"
+                      tx.type === "borrow" ? "text-credora-amber" : "text-credora-emerald"
                     )}
                   >
-                    {tx.amount > 0 ? "+" : ""}₹{Math.abs(tx.amount).toLocaleString()}
+                    {tx.type === "borrow" ? "+" : "-"}{formatUSDT(parseFloat(tx.amount))}
                   </p>
                 </div>
               ))}

@@ -13,45 +13,54 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-
-const portfolioAllocation = [
-  { name: "Low Risk Pool", percentage: 40, color: "bg-credora-emerald", amount: 600000 },
-  { name: "Medium Risk Pool", percentage: 35, color: "bg-credora-blue", amount: 525000 },
-  { name: "High Risk Pool", percentage: 25, color: "bg-credora-amber", amount: 375000 },
-];
-
-const recentActivity = [
-  {
-    id: 1,
-    type: "return",
-    description: "Monthly yield - Low Risk Pool",
-    amount: 4500,
-    date: "Dec 24, 2024",
-  },
-  {
-    id: 2,
-    type: "investment",
-    description: "Added to Medium Risk Pool",
-    amount: -100000,
-    date: "Dec 20, 2024",
-  },
-  {
-    id: 3,
-    type: "return",
-    description: "Monthly yield - High Risk Pool",
-    amount: 3750,
-    date: "Dec 15, 2024",
-  },
-  {
-    id: 4,
-    type: "withdrawal",
-    description: "Partial withdrawal",
-    amount: 50000,
-    date: "Dec 10, 2024",
-  },
-];
+import { useState, useEffect } from "react";
+import investorService from "@/services/investor.service";
+import { formatUSDT } from "@/utils/currency";
+import type { InvestorDashboard as DashboardData } from "@/types/api.types";
+import { cn } from "@/lib/utils";
 
 export default function InvestorDashboard() {
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setIsLoading(true);
+        const data = await investorService.getDashboard();
+        setDashboardData(data);
+      } catch (err) {
+        console.error("Failed to fetch dashboard:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <InvestorLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </InvestorLayout>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <InvestorLayout>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-red-500">Failed to load dashboard</p>
+        </div>
+      </InvestorLayout>
+    );
+  }
+
+  const { portfolio, balance, returns, recentActivity } = dashboardData;
+
   return (
     <InvestorLayout>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -64,15 +73,15 @@ export default function InvestorDashboard() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
               <p className="text-accent-foreground/70 mb-2">Total Portfolio Value</p>
-              <h2 className="text-4xl lg:text-5xl font-bold mb-4">₹15,00,000</h2>
+              <h2 className="text-4xl lg:text-5xl font-bold mb-4">{formatUSDT(parseFloat(portfolio.totalValue))}</h2>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-accent-foreground/10">
                   <TrendingUp className="w-4 h-4 text-credora-emerald" />
-                  <span className="text-sm font-medium">+12.4% APY</span>
+                  <span className="text-sm font-medium">+{parseFloat(returns.monthlyAverage) > 0 ? ((parseFloat(returns.monthlyAverage) / parseFloat(portfolio.totalValue)) * 100 * 12).toFixed(1) : 0}% APY</span>
                 </div>
                 <div className="text-sm">
                   <span className="text-accent-foreground/70">Lifetime Earnings: </span>
-                  <span className="font-medium">₹1,86,000</span>
+                  <span className="font-medium">{formatUSDT(parseFloat(returns.totalEarned))}</span>
                 </div>
               </div>
             </div>
@@ -91,28 +100,28 @@ export default function InvestorDashboard() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Active Investment"
-            value="₹15,00,000"
+            value={formatUSDT(parseFloat(balance.portfolioValue))}
             icon={Wallet}
             variant="blue"
           />
           <StatCard
             label="Monthly Returns"
-            value="₹15,500"
+            value={formatUSDT(parseFloat(returns.monthlyAverage))}
             subValue="avg."
             icon={TrendingUp}
             trend={{ value: 8.2, isPositive: true }}
             variant="emerald"
           />
           <StatCard
-            label="Students Funded"
-            value="24"
+            label="Total Shares"
+            value={parseFloat(balance.totalShares).toFixed(2)}
             icon={Users}
             variant="purple"
           />
           <StatCard
-            label="Risk Score"
-            value="Low-Med"
-            subValue="diversified"
+            label="Withdrawable"
+            value={formatUSDT(parseFloat(returns.withdrawable))}
+            subValue="available"
             icon={Shield}
             variant="amber"
           />
@@ -133,34 +142,42 @@ export default function InvestorDashboard() {
 
             {/* Visual Bar */}
             <div className="h-4 rounded-full overflow-hidden flex mb-6">
-              {portfolioAllocation.map((pool, index) => (
-                <motion.div
-                  key={pool.name}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pool.percentage}%` }}
-                  transition={{ duration: 0.8, delay: 0.3 + index * 0.1 }}
-                  className={`${pool.color} ${index === 0 ? "rounded-l-full" : ""} ${
-                    index === portfolioAllocation.length - 1 ? "rounded-r-full" : ""
-                  }`}
-                />
-              ))}
+              {portfolio.pools.map((pool, index) => {
+                const percentage = (parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100;
+                return (
+                  <motion.div
+                    key={pool.poolAddress}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${percentage}%` }}
+                    transition={{ duration: 0.8, delay: 0.3 + index * 0.1 }}
+                    className={cn(
+                      index === 0 ? "rounded-l-full" : "",
+                      index === portfolio.pools.length - 1 ? "rounded-r-full" : "",
+                      "bg-credora-" + ["emerald", "blue", "amber"][index % 3]
+                    )}
+                  />
+                );
+              })}
             </div>
 
             <div className="space-y-4">
-              {portfolioAllocation.map((pool) => (
-                <div key={pool.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${pool.color}`} />
-                    <span className="text-sm">{pool.name}</span>
+              {portfolio.pools.map((pool) => {
+                const percentage = ((parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100).toFixed(1);
+                return (
+                  <div key={pool.poolAddress} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full bg-credora-blue" />
+                      <span className="text-sm">{pool.poolName}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">
+                        {formatUSDT(parseFloat(pool.currentValue))}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{percentage}%</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium">
-                      ₹{pool.amount.toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{pool.percentage}%</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <Link to="/investor/pools">

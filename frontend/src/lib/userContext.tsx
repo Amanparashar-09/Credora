@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import authService from "@/services/auth.service";
 
 export type UserRole = "student" | "investor" | null;
 
@@ -8,6 +9,8 @@ interface UserContextType {
   walletAddress: string | null;
   setWalletAddress: (address: string | null) => void;
   isConnected: boolean;
+  isAuthenticated: boolean;
+  logout: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -15,6 +18,27 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Load stored auth on mount
+  useEffect(() => {
+    const storedRole = authService.getUserRole();
+    const storedAddress = authService.getWalletAddress();
+    const hasToken = authService.isAuthenticated();
+
+    if (hasToken && storedRole && storedAddress) {
+      setRole(storedRole);
+      setWalletAddress(storedAddress);
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const logout = () => {
+    authService.logout();
+    setRole(null);
+    setWalletAddress(null);
+    setIsAuthenticated(false);
+  };
 
   return (
     <UserContext.Provider
@@ -24,6 +48,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         walletAddress,
         setWalletAddress,
         isConnected: !!walletAddress,
+        isAuthenticated,
+        logout,
       }}
     >
       {children}

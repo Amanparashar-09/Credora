@@ -4,8 +4,26 @@ import { CONTRACT_CONFIG, EIP712_DOMAIN, EIP712_TYPES } from '../config/contract
 import { CreditHistory } from '../models/CreditHistory';
 import { Student } from '../models/Student';
 
-const provider = new ethers.JsonRpcProvider(CONTRACT_CONFIG.RPC_URL);
-const attesterWallet = new ethers.Wallet(CONTRACT_CONFIG.ATTESTER_PRIVATE_KEY, provider);
+// Lazy initialization to ensure env vars are loaded
+let _provider: ethers.JsonRpcProvider | null = null;
+let _attesterWallet: ethers.Wallet | null = null;
+
+function getProvider(): ethers.JsonRpcProvider {
+  if (!_provider) {
+    _provider = new ethers.JsonRpcProvider(CONTRACT_CONFIG.RPC_URL);
+  }
+  return _provider;
+}
+
+function getAttesterWallet(): ethers.Wallet {
+  if (!_attesterWallet) {
+    if (!CONTRACT_CONFIG.ATTESTER_PRIVATE_KEY) {
+      throw new Error('ATTESTER_PRIVATE_KEY not configured in environment');
+    }
+    _attesterWallet = new ethers.Wallet(CONTRACT_CONFIG.ATTESTER_PRIVATE_KEY, getProvider());
+  }
+  return _attesterWallet;
+}
 
 export interface CreditAttestation {
   holder: string;
@@ -37,7 +55,7 @@ export const oracleService = {
       };
 
       // Sign using EIP-712
-      const signature = await attesterWallet.signTypedData(
+      const signature = await getAttesterWallet().signTypedData(
         EIP712_DOMAIN,
         EIP712_TYPES,
         message
@@ -96,7 +114,7 @@ export const oracleService = {
         validUntil: new Date(validUntil * 1000),
         nonce: attestation.nonce,
         signature,
-        signedBy: attesterWallet.address.toLowerCase(),
+        signedBy: getAttesterWallet().address.toLowerCase(),
         metadata: {
           signedAt: new Date(),
         },
@@ -143,7 +161,7 @@ export const oracleService = {
         signature
       );
 
-      return recoveredAddress.toLowerCase() === attesterWallet.address.toLowerCase();
+      return recoveredAddress.toLowerCase() === getAttesterWallet().address.toLowerCase();
     } catch (error) {
       return false;
     }
@@ -153,6 +171,6 @@ export const oracleService = {
    * Get attester address
    */
   getAttesterAddress(): string {
-    return attesterWallet.address;
+    return getAttesterWallet().address;
   },
 };
