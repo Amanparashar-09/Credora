@@ -10,9 +10,9 @@ def score_student(student: dict):
     score = calculate_credit_score(X)
     return {
         "credora_score": score,
-        "credit_limit": (
-            50000 if score >= 80 else
-            30000 if score >= 65 else
-            15000 if score >= 50 else 0
-        )
+        # "credit_limit": (
+        #     50000 if score >= 80 else
+        #     30000 if score >= 65 else
+        #     15000 if score >= 50 else 0
+        # )
     }

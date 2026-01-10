@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("dotenv").config();
 
 module.exports = {
   solidity: {
@@ -10,5 +11,14 @@ module.exports = {
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",
+  },
+  networks: {
+    hoodi: {
+      url: "https://ethereum-hoodi-rpc.publicnode.com",
+      chainId: 560048,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      timeout: 60000,
+      gasPrice: 100000000000, // 100 Gwei - higher to replace pending tx
+    },
   },
 };
