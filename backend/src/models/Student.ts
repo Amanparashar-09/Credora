@@ -63,7 +63,7 @@ const studentSchema = new Schema<IStudent>(
 
     creditScore: {
       type: Number,
-      default: 0,
+      default: 500, // Default to middle of range (300-1000)
       min: 300,
       max: 1000,
     },

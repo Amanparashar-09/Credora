@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { StudentLayout } from "@/components/layouts/StudentLayout";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Upload,
+  X,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const steps = [
   { id: 1, title: "Academic Details", icon: GraduationCap },
@@ -36,6 +38,7 @@ export default function StudentOnboarding() {
     // Documents
     resume: null as File | null,
   });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleNext = () => {
     if (currentStep < steps.length) {
@@ -46,6 +49,53 @@ export default function StudentOnboarding() {
   const handlePrev = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!validTypes.includes(file.type)) {
+        alert('Please upload a PDF or DOC file');
+        return;
+      }
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      setFormData({ ...formData, resume: file });
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      // Validate and set file
+      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!validTypes.includes(file.type)) {
+        alert('Please upload a PDF or DOC file');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      setFormData({ ...formData, resume: file });
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const removeFile = () => {
+    setFormData({ ...formData, resume: null });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -272,13 +322,53 @@ export default function StudentOnboarding() {
                   Upload your resume to complete your profile
                 </p>
               </div>
-              <div className="border-2 border-dashed border-border rounded-2xl p-8 text-center hover:border-credora-emerald/50 transition-colors cursor-pointer">
-                <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="font-medium mb-1">Drop your resume here</p>
-                <p className="text-sm text-muted-foreground">
-                  or click to browse • PDF, DOC up to 5MB
-                </p>
-              </div>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              
+              {!formData.resume ? (
+                <div 
+                  className="border-2 border-dashed border-border rounded-2xl p-8 text-center hover:border-credora-emerald/50 transition-colors cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                >
+                  <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="font-medium mb-1">Drop your resume here</p>
+                  <p className="text-sm text-muted-foreground">
+                    or click to browse • PDF, DOC up to 5MB
+                  </p>
+                </div>
+              ) : (
+                <div className="border-2 border-credora-emerald rounded-2xl p-6 bg-credora-emerald/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-credora-emerald/10 flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-credora-emerald" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{formData.resume.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {(formData.resume.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={removeFile}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

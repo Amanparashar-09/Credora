@@ -16,6 +16,7 @@ export default function ConnectWallet() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<"connect" | "role">("connect");
   const [currentAddress, setCurrentAddress] = useState<string>("");
+  const [authData, setAuthData] = useState<{ message: string; signature: string; address: string } | null>(null);
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -32,12 +33,8 @@ export default function ConnectWallet() {
       const message = `Credora authentication nonce: ${nonce}`;
       const signature = await blockchainService.signMessage(message);
       
-      // Login with signature
-      await authService.login({
-        address,
-        signature,
-        nonce,
-      });
+      // Store auth data for later login
+      setAuthData({ address, signature, message });
       
       setWalletAddress(address);
       setStep("role");
@@ -58,9 +55,37 @@ export default function ConnectWallet() {
     }
   };
 
-  const handleRoleSelect = (selectedRole: "student" | "investor") => {
-    setRole(selectedRole);
-    navigate(selectedRole === "student" ? "/student" : "/investor");
+  const handleRoleSelect = async (selectedRole: "student" | "investor") => {
+    if (!authData) return;
+    
+    try {
+      setIsConnecting(true);
+      
+      // Login with signature and role
+      await authService.login({
+        address: authData.address,
+        signature: authData.signature,
+        message: authData.message,
+        role: selectedRole,
+      });
+      
+      setRole(selectedRole);
+      navigate(selectedRole === "student" ? "/student" : "/investor");
+      
+      toast({
+        title: "Login Successful",
+        description: `Welcome as a ${selectedRole}!`,
+      });
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      toast({
+        title: "Login Failed",
+        description: error.message || "Failed to login. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   return (

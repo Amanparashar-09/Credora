@@ -59,7 +59,12 @@ export default function InvestorDashboard() {
     );
   }
 
-  const { portfolio, balance, returns, recentActivity } = dashboardData;
+  const { 
+    portfolio = { totalValue: '0', invested: '0', available: '0', allocation: [], pools: [] },
+    balance = { wallet: '0', poolShares: '0', withdrawable: '0', portfolioValue: '0' },
+    returns = { totalEarned: '0', monthlyAverage: '0', currentAPY: 0 },
+    recentActivity = []
+  } = dashboardData || {};
 
   return (
     <InvestorLayout>

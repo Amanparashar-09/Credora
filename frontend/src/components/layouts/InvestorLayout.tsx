@@ -13,8 +13,11 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/lib/userContext";
+import authService from "@/services/auth.service";
+import investorService from "@/services/investor.service";
 
 interface InvestorLayoutProps {
   children: React.ReactNode;
@@ -32,6 +35,32 @@ const navItems = [
 export function InvestorLayout({ children }: InvestorLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { walletAddress } = useUser();
+  const [investorName, setInvestorName] = useState<string>("Investor");
+
+  useEffect(() => {
+    const fetchInvestorData = async () => {
+      try {
+        const profile = await investorService.getProfile();
+        setInvestorName(profile.fullName || "Investor");
+      } catch (error) {
+        console.error("Failed to fetch investor profile:", error);
+        setInvestorName("Investor");
+      }
+    };
+
+    fetchInvestorData();
+  }, []);
+
+  const handleLogout = () => {
+    authService.logout();
+    window.location.href = "/";
+  };
+
+  const formatAddress = (address: string) => {
+    if (!address) return "Not Connected";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -91,13 +120,13 @@ export function InvestorLayout({ children }: InvestorLayoutProps) {
         </nav>
 
         <div className="p-4 border-t border-border">
-          <Link
-            to="/"
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors w-full"
           >
             <LogOut className="w-5 h-5" />
             <span className="font-medium">Disconnect</span>
-          </Link>
+          </button>
         </div>
       </aside>
 
@@ -115,7 +144,7 @@ export function InvestorLayout({ children }: InvestorLayoutProps) {
               <Menu className="w-5 h-5" />
             </Button>
             <div>
-              <h1 className="font-semibold text-lg">Welcome back, Investor</h1>
+              <h1 className="font-semibold text-lg">Welcome back, {investorName}</h1>
               <p className="text-sm text-muted-foreground">
                 Portfolio Overview
               </p>
@@ -124,7 +153,7 @@ export function InvestorLayout({ children }: InvestorLayoutProps) {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-credora-blue/10 text-credora-blue text-sm font-medium">
               <span className="w-2 h-2 rounded-full bg-credora-blue" />
-              0x8765...4321
+              {formatAddress(walletAddress)}
             </div>
           </div>
         </header>

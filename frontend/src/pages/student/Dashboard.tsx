@@ -66,7 +66,12 @@ export default function StudentDashboard() {
     );
   }
 
-  const { credit, borrowing, recentTransactions, badges } = dashboardData;
+  const { 
+    credit = { available: '0', limit: '0', used: '0', score: 500, expiry: null }, 
+    borrowing = { totalBorrowed: '0', activeLoans: 0, nextPayment: null }, 
+    recentTransactions = [], 
+    badges = [] 
+  } = dashboardData || {};
 
   return (
     <StudentLayout>

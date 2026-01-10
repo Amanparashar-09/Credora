@@ -17,7 +17,8 @@ export interface NonceResponse {
 export interface LoginRequest {
   address: string;
   signature: string;
-  nonce: string;
+  message: string;
+  role: 'student' | 'investor';
 }
 
 export interface LoginResponse {

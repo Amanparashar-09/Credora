@@ -4,7 +4,7 @@ import authService from '@/services/auth.service';
 interface UseAuthReturn {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (address: string, signature: string, nonce: string) => Promise<void>;
+  login: (address: string, signature: string, message: string, role: 'student' | 'investor') => Promise<void>;
   logout: () => void;
   verifyAuth: () => Promise<boolean>;
 }
@@ -33,9 +33,9 @@ export const useAuth = (): UseAuthReturn => {
     checkAuth();
   }, []);
 
-  const login = async (address: string, signature: string, nonce: string) => {
+  const login = async (address: string, signature: string, message: string, role: 'student' | 'investor') => {
     try {
-      await authService.login({ address, signature, nonce });
+      await authService.login({ address, signature, message, role });
       setIsAuthenticated(true);
     } catch (error) {
       console.error('Login failed:', error);
