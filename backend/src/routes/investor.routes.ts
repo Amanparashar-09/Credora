@@ -18,6 +18,8 @@ router.get('/pools', apiLimiter, investorController.getPools);
 router.get('/pools/:address/stats', apiLimiter, investorController.getPoolStats);
 
 // Investment management
+router.post('/invest', apiLimiter, investorController.invest);
+router.post('/withdraw', apiLimiter, investorController.withdraw);
 router.get('/portfolio', apiLimiter, investorController.getPortfolio);
 router.get('/balance', apiLimiter, investorController.getBalance);
 router.get('/returns', apiLimiter, investorController.getReturns);

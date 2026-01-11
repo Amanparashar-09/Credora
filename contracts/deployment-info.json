@@ -1,0 +1,23 @@
+{
+  "network": "hoodi",
+  "chainId": "560048",
+  "rpcUrl": "https://ethereum-hoodi-rpc.publicnode.com",
+  "deployerAddress": "0x90A942D10A27D9B70Da40EB13F19F0FD1503221D",
+  "timestamp": "2026-01-11T12:30:05.189Z",
+  "contracts": {
+    "MockUSDT": {
+      "address": "0x21dbfc68743D9a5b2A220de2F68c084f937cEe4F",
+      "deployer": "0x90A942D10A27D9B70Da40EB13F19F0FD1503221D"
+    },
+    "CreditRegistry": {
+      "address": "0xd18267b34e2664bc01fD7A36e457FF59cD24667B",
+      "attester": "0x90A942D10A27D9B70Da40EB13F19F0FD1503221D"
+    },
+    "CredoraPool": {
+      "address": "0x8f82841452c870Add2A0DE3A8579e87662B8A537",
+      "admin": "0x90A942D10A27D9B70Da40EB13F19F0FD1503221D",
+      "usdt": "0x21dbfc68743D9a5b2A220de2F68c084f937cEe4F",
+      "registry": "0xd18267b34e2664bc01fD7A36e457FF59cD24667B"
+    }
+  }
+}

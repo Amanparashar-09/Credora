@@ -60,14 +60,15 @@ export const blockchainService = {
     totalShares: string;
     utilizationRate: number;
     currentInterestRate: string;
-    reserveFunds: string;
   }> {
     try {
-      const [liquidity, borrowed, shares, reserves] = await Promise.all([
+      logger.info(`Fetching pool stats from: ${CONTRACT_CONFIG.CREDORA_POOL}`);
+      logger.info(`RPC URL: ${CONTRACT_CONFIG.RPC_URL}`);
+      
+      const [liquidity, borrowed, shares] = await Promise.all([
         credoraPool.totalLiquidity(),
         credoraPool.totalBorrowed(),
         credoraPool.totalShares(),
-        credoraPool.reserveFunds(),
       ]);
 
       const liquidityNum = Number(ethers.formatUnits(liquidity, 18));
@@ -83,16 +84,20 @@ export const blockchainService = {
         interestRate = 0.10 + ((util - 0.8) / 0.2) * 0.40; // 10% to 50%
       }
 
-      return {
+      const result = {
         totalLiquidity: ethers.formatUnits(liquidity, 18),
         totalBorrowed: ethers.formatUnits(borrowed, 18),
         totalShares: ethers.formatUnits(shares, 18),
         utilizationRate: Math.round(utilizationRate * 100) / 100,
         currentInterestRate: (interestRate * 100).toFixed(2) + '%',
-        reserveFunds: ethers.formatUnits(reserves, 18),
       };
+      
+      logger.info(`Pool stats result:`, result);
+      
+      return result;
     } catch (error: any) {
       logger.error('Failed to get pool stats:', error.message);
+      logger.error('Error stack:', error.stack);
       // Return default values for new/empty pool
       return {
         totalLiquidity: '0',
@@ -100,7 +105,6 @@ export const blockchainService = {
         totalShares: '0',
         utilizationRate: 0,
         currentInterestRate: '2.00%',
-        reserveFunds: '0',
       };
     }
   },
@@ -147,15 +151,24 @@ export const blockchainService = {
     withdrawableAmount: string;
   }> {
     try {
+      logger.info(`Fetching balance for investor: ${investorAddress}`);
+      logger.info(`Pool contract address: ${CONTRACT_CONFIG.CREDORA_POOL}`);
+      logger.info(`RPC URL: ${CONTRACT_CONFIG.RPC_URL}`);
+      
       const shares = await credoraPool.balanceOf(investorAddress);
       const withdrawable = await credoraPool.previewWithdraw(shares);
 
-      return {
+      const result = {
         shares: ethers.formatUnits(shares, 18),
         withdrawableAmount: ethers.formatUnits(withdrawable, 18),
       };
+      
+      logger.info(`Investor balance result:`, result);
+      
+      return result;
     } catch (error: any) {
       logger.error('Failed to get investor balance:', error.message);
+      logger.error('Error stack:', error.stack);
       // Return zero balance for new investors
       return {
         shares: '0',

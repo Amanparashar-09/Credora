@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { StatCard } from "@/components/StatCard";
 import { InvestorLayout } from "@/components/layouts/InvestorLayout";
 import {
@@ -12,7 +13,6 @@ import {
   PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import investorService from "@/services/investor.service";
 import { formatUSDT } from "@/utils/currency";
@@ -60,11 +60,32 @@ export default function InvestorDashboard() {
   }
 
   const { 
-    portfolio = { totalValue: '0', invested: '0', available: '0', allocation: [], pools: [] },
+    portfolio = { totalValue: '0', invested: '0', available: '0', allocation: [], pools: [], apy: '0%' },
     balance = { wallet: '0', poolShares: '0', withdrawable: '0', portfolioValue: '0' },
-    returns = { totalEarned: '0', monthlyAverage: '0', currentAPY: 0 },
+    returns = { totalEarned: '0', monthlyAverage: '0', currentAPY: 0, withdrawable: '0' },
     recentActivity = []
   } = dashboardData || {};
+
+  // Get risk metrics from dashboard data (if available)
+  const riskMetrics = (dashboardData as any)?.riskMetrics || {
+    defaultRate: '1.2',
+    avgLockIn: '6 months',
+    nextPayout: {
+      amount: '0',
+      daysUntil: 15,
+    },
+    utilizationRate: 0,
+  };
+
+  // Determine risk level status
+  const getDefaultRateStatus = (rate: string) => {
+    const rateNum = parseFloat(rate);
+    if (rateNum < 1.5) return { label: 'Excellent', color: 'credora-emerald' };
+    if (rateNum < 2.5) return { label: 'Good', color: 'credora-blue' };
+    return { label: 'Moderate', color: 'credora-amber' };
+  };
+
+  const defaultRateStatus = getDefaultRateStatus(riskMetrics.defaultRate);
 
   return (
     <InvestorLayout>
@@ -91,12 +112,16 @@ export default function InvestorDashboard() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="hero" size="lg" className="bg-accent-foreground text-credora-blue hover:bg-accent-foreground/90">
-                Invest More
-              </Button>
-              <Button variant="glass" size="lg" className="border-accent-foreground/30 text-accent-foreground hover:bg-accent-foreground/10">
-                Withdraw
-              </Button>
+              <Link to="/investor/invest">
+                <Button variant="hero" size="lg" className="bg-accent-foreground text-credora-blue hover:bg-accent-foreground/90 w-full sm:w-auto">
+                  Invest More
+                </Button>
+              </Link>
+              <Link to="/investor/returns">
+                <Button variant="glass" size="lg" className="border-accent-foreground/30 text-accent-foreground hover:bg-accent-foreground/10 w-full sm:w-auto">
+                  Withdraw
+                </Button>
+              </Link>
             </div>
           </div>
         </motion.div>
@@ -118,9 +143,9 @@ export default function InvestorDashboard() {
             variant="emerald"
           />
           <StatCard
-            label="Total Shares"
-            value={parseFloat(balance.totalShares).toFixed(2)}
-            icon={Users}
+            label="Wallet Balance"
+            value={formatUSDT(parseFloat(balance.usdtBalance || '0'))}
+            icon={Wallet}
             variant="purple"
           />
           <StatCard
@@ -166,12 +191,13 @@ export default function InvestorDashboard() {
             </div>
 
             <div className="space-y-4">
-              {portfolio.pools.map((pool) => {
+              {portfolio.pools.map((pool, index) => {
                 const percentage = ((parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100).toFixed(1);
+                const colorClass = ["emerald", "blue", "amber", "purple"][index % 4];
                 return (
                   <div key={pool.poolAddress} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-credora-blue" />
+                      <div className={`w-3 h-3 rounded-full bg-credora-${colorClass}`} />
                       <span className="text-sm">{pool.poolName}</span>
                     </div>
                     <div className="text-right">
@@ -248,8 +274,8 @@ export default function InvestorDashboard() {
                         : "text-muted-foreground"
                     )}
                   >
-                    {activity.type === "return" ? "+" : ""}₹
-                    {Math.abs(activity.amount).toLocaleString()}
+                    {activity.type === "return" ? "+" : activity.type === "withdrawal" ? "-" : "+"}
+                    {formatUSDT(Math.abs(activity.amount))}
                   </p>
                 </div>
               ))}
@@ -278,14 +304,16 @@ export default function InvestorDashboard() {
             </Link>
           </div>
           <div className="grid sm:grid-cols-3 gap-6">
-            <div className="p-4 rounded-xl bg-credora-emerald/5 border border-credora-emerald/20">
+            <div className={`p-4 rounded-xl bg-${defaultRateStatus.color}/5 border border-${defaultRateStatus.color}/20`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-muted-foreground">Default Rate</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-credora-emerald/10 text-credora-emerald">
-                  Excellent
+                <span className={`text-xs px-2 py-0.5 rounded-full bg-${defaultRateStatus.color}/10 text-${defaultRateStatus.color}`}>
+                  {defaultRateStatus.label}
                 </span>
               </div>
-              <p className="text-2xl font-bold text-credora-emerald">1.2%</p>
+              <p className={`text-2xl font-bold text-${defaultRateStatus.color}`}>
+                {riskMetrics.defaultRate}%
+              </p>
             </div>
             <div className="p-4 rounded-xl bg-credora-blue/5 border border-credora-blue/20">
               <div className="flex items-center justify-between mb-2">
@@ -294,16 +322,18 @@ export default function InvestorDashboard() {
                   Optimal
                 </span>
               </div>
-              <p className="text-2xl font-bold text-credora-blue">6 months</p>
+              <p className="text-2xl font-bold text-credora-blue">{riskMetrics.avgLockIn}</p>
             </div>
             <div className="p-4 rounded-xl bg-credora-amber/5 border border-credora-amber/20">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-muted-foreground">Next Payout</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-credora-amber/10 text-credora-amber">
-                  5 days
+                  {riskMetrics.nextPayout.daysUntil} days
                 </span>
               </div>
-              <p className="text-2xl font-bold text-credora-amber">₹15,500</p>
+              <p className="text-2xl font-bold text-credora-amber">
+                {formatUSDT(parseFloat(riskMetrics.nextPayout.amount))}
+              </p>
             </div>
           </div>
         </motion.div>

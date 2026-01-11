@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 
 export const CONTRACT_CONFIG = {
   // Network Configuration
-  RPC_URL: process.env.BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:8545',
+  RPC_URL: process.env.RPC_URL || 'http://127.0.0.1:8545',
   CHAIN_ID: parseInt(process.env.CHAIN_ID || '31337'),
 
   // Contract Addresses

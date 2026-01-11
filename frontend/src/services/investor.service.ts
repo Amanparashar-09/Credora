@@ -110,6 +110,34 @@ class InvestorService {
     }
     throw new Error('Failed to fetch dashboard');
   }
+
+  /**
+   * Record investment transaction
+   */
+  async recordInvestment(amount: string, txHash: string, riskTier?: string, lockInPeriod?: string): Promise<void> {
+    const response = await api.post<ApiResponse<{ message: string; amount: string; txHash: string; totalDeposited: string }>>('/investor/invest', {
+      amount,
+      txHash,
+      riskTier,
+      lockInPeriod,
+    });
+    if (!response.data.success) {
+      throw new Error('Failed to record investment');
+    }
+  }
+
+  /**
+   * Record withdrawal transaction
+   */
+  async recordWithdrawal(amount: string, txHash: string): Promise<void> {
+    const response = await api.post<ApiResponse<{ message: string }>>('/investor/withdraw', {
+      amount,
+      txHash,
+    });
+    if (!response.data.success) {
+      throw new Error('Failed to record withdrawal');
+    }
+  }
 }
 
 export default new InvestorService();

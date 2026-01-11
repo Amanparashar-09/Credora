@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface ICreditRegistry {
     function isValid(address user) external view returns (bool);
+
     function limitOf(address user) external view returns (uint256);
 }
 
@@ -34,10 +35,26 @@ contract CredoraPool {
     event Deposited(address indexed user, uint256 amount, uint256 shares);
     event Withdrawn(address indexed user, uint256 amount, uint256 shares);
 
-    event Borrowed(address indexed user, uint256 amount, uint256 newPrincipal, uint256 dueAt);
-    event Repaid(address indexed user, uint256 amount, uint256 principalPaid, uint256 interestPaid, uint256 reserveCut);
+    event Borrowed(
+        address indexed user,
+        uint256 amount,
+        uint256 newPrincipal,
+        uint256 dueAt
+    );
+    event Repaid(
+        address indexed user,
+        uint256 amount,
+        uint256 principalPaid,
+        uint256 interestPaid,
+        uint256 reserveCut
+    );
 
-    event DefaultWrittenOff(address indexed user, uint256 writtenPrincipal, uint256 writtenInterest, uint256 reserveUsed);
+    event DefaultWrittenOff(
+        address indexed user,
+        uint256 writtenPrincipal,
+        uint256 writtenInterest,
+        uint256 reserveUsed
+    );
 
     event ParamsUpdated(
         uint256 baseRatePerYearWad,
@@ -70,7 +87,7 @@ contract CredoraPool {
 
     // Aggregate debt
     uint256 public totalScaledDebtRay; // sum(userScaledDebtRay)
-    uint256 public totalPrincipal;     // sum(userPrincipal)
+    uint256 public totalPrincipal; // sum(userPrincipal)
 
     // Per user
     mapping(address => uint256) public userScaledDebtRay;
@@ -87,34 +104,34 @@ contract CredoraPool {
     // Rate model params (WAD)
     // utilization u = totalDebt / (cash + totalDebt)
     // rate per year = piecewise kink model
-    uint256 public baseRatePerYearWad;     // e.g. 0.05e18 = 5%
-    uint256 public slopePerYearWad;        // pre-kink slope
-    uint256 public kinkUtilWad;            // e.g. 0.8e18
-    uint256 public jumpSlopePerYearWad;    // post-kink additional slope
+    uint256 public baseRatePerYearWad; // e.g. 0.05e18 = 5%
+    uint256 public slopePerYearWad; // pre-kink slope
+    uint256 public kinkUtilWad; // e.g. 0.8e18
+    uint256 public jumpSlopePerYearWad; // post-kink additional slope
 
     // Protocol params
-    uint256 public reserveBps;     // interest cut to reserve (bps)
-    uint256 public termSeconds;    // loan term per borrow (MVP: resets on borrow)
-    uint256 public graceSeconds;   // after dueAt, grace before default
+    uint256 public reserveBps; // interest cut to reserve (bps)
+    uint256 public termSeconds; // loan term per borrow (MVP: resets on borrow)
+    uint256 public graceSeconds; // after dueAt, grace before default
 
-    constructor(
-        address usdt_,
-        address registry_,
-        address admin_
-    ) {
-        if (usdt_ == address(0) || registry_ == address(0) || admin_ == address(0)) revert BadParams();
+    constructor(address usdt_, address registry_, address admin_) {
+        if (
+            usdt_ == address(0) ||
+            registry_ == address(0) ||
+            admin_ == address(0)
+        ) revert BadParams();
 
         usdt = IERC20(usdt_);
         registry = ICreditRegistry(registry_);
         admin = admin_;
 
         // sane defaults (you can tune later)
-        baseRatePerYearWad = 5e16;      // 5%
-        slopePerYearWad = 2e17;         // +20% at kink
-        kinkUtilWad = 8e17;             // 80%
-        jumpSlopePerYearWad = 5e17;     // steeper after kink
+        baseRatePerYearWad = 5e16; // 5%
+        slopePerYearWad = 2e17; // +20% at kink
+        kinkUtilWad = 8e17; // 80%
+        jumpSlopePerYearWad = 5e17; // steeper after kink
 
-        reserveBps = 800;               // 8% of interest to reserve
+        reserveBps = 800; // 8% of interest to reserve
         termSeconds = 30 days;
         graceSeconds = 7 days;
 
@@ -181,6 +198,11 @@ contract CredoraPool {
         return (totalScaledDebtRay * borrowIndexRay) / RAY;
     }
 
+    function totalBorrowed() public view returns (uint256) {
+        // Alias for backend compatibility - same as totalDebt
+        return totalDebt();
+    }
+
     function utilizationWad() public view returns (uint256) {
         uint256 c = cash();
         uint256 d = totalDebt();
@@ -221,8 +243,38 @@ contract CredoraPool {
         return limit - due;
     }
 
+    // Backend convenience views
+    function totalLiquidity() public view returns (uint256) {
+        // Total assets = cash (including reserve) + total debt
+        return cash() + totalDebt();
+    }
+
+    function balanceOf(address user) public view returns (uint256) {
+        return sharesOf[user];
+    }
+
+    function previewWithdraw(uint256 shares) public view returns (uint256) {
+        return sharesToAssets(shares);
+    }
+
+    function getBorrowerDebt(
+        address borrower
+    )
+        public
+        view
+        returns (uint256 principal, uint256 debt, uint256 dueAtTimestamp)
+    {
+        return (
+            userPrincipal[borrower],
+            userTotalDebt(borrower),
+            dueAt[borrower]
+        );
+    }
+
     // ---------- Interest Accrual ----------
-    function _borrowRatePerYearWad(uint256 utilWad) internal view returns (uint256) {
+    function _borrowRatePerYearWad(
+        uint256 utilWad
+    ) internal view returns (uint256) {
         // kink model:
         // if u <= kink: r = base + slope * (u/kink)
         // if u > kink:  r = base + slope + jumpSlope * ((u-kink)/(1-kink))
@@ -234,7 +286,11 @@ contract CredoraPool {
             uint256 excess = utilWad - kinkUtilWad;
             uint256 denom = (WAD - kinkUtilWad);
             uint256 post = (denom == 0) ? WAD : (excess * WAD) / denom;
-            return baseRatePerYearWad + slopePerYearWad + (jumpSlopePerYearWad * post) / WAD;
+            return
+                baseRatePerYearWad +
+                slopePerYearWad +
+                (jumpSlopePerYearWad * post) /
+                WAD;
         }
     }
 
@@ -321,7 +377,12 @@ contract CredoraPool {
 
         usdt.safeTransfer(msg.sender, amount);
 
-        emit Borrowed(msg.sender, amount, userPrincipal[msg.sender], dueAt[msg.sender]);
+        emit Borrowed(
+            msg.sender,
+            amount,
+            userPrincipal[msg.sender],
+            dueAt[msg.sender]
+        );
     }
 
     function repay(uint256 amount) external {
@@ -335,12 +396,18 @@ contract CredoraPool {
 
         // compute interest vs principal
         uint256 principalOutstanding = userPrincipal[msg.sender];
-        uint256 interestOutstanding = (due > principalOutstanding) ? (due - principalOutstanding) : 0;
+        uint256 interestOutstanding = (due > principalOutstanding)
+            ? (due - principalOutstanding)
+            : 0;
 
-        uint256 interestPaid = pay > interestOutstanding ? interestOutstanding : pay;
+        uint256 interestPaid = pay > interestOutstanding
+            ? interestOutstanding
+            : pay;
         uint256 remaining = pay - interestPaid;
 
-        uint256 principalPaid = remaining > principalOutstanding ? principalOutstanding : remaining;
+        uint256 principalPaid = remaining > principalOutstanding
+            ? principalOutstanding
+            : remaining;
 
         // reserve cut from interest only
         uint256 reserveCut = (interestPaid * reserveBps) / 10000;
