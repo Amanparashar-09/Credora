@@ -3,8 +3,6 @@ import { motion } from "framer-motion";
 import { StudentLayout } from "@/components/layouts/StudentLayout";
 import { 
   User, 
-  Bell, 
-  Shield, 
   Wallet, 
   Trash2, 
   Edit, 
@@ -15,114 +13,173 @@ import {
   GraduationCap,
   Github,
   Briefcase,
-  Award
+  Award,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import studentService from "@/services/student.service";
+import { getProfile, updateProfile, StudentProfile, UpdateProfileData } from "@/services/studentProfile.service";
 import { useToast } from "@/hooks/use-toast";
-import type { StudentProfile } from "@/types/api.types";
+import { useNavigate } from "react-router-dom";
 
 export default function StudentSettings() {
-  const [isEditing, setIsEditing] = useState(false);
   const [editSection, setEditSection] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
   
-  const [profileData, setProfileData] = useState<any>({
-    displayName: "",
+  const [tempData, setTempData] = useState({
+    name: "",
     email: "",
     phone: "",
-    collegeName: "",
+    university: "",
     degree: "",
     branch: "",
     graduationYear: "",
-    cgpa: "",
+    gpa: "",
     semester: "",
     githubUsername: "",
     repositoriesCount: "",
     contributionsCount: "",
-    numberOfInternships: 0,
-    skills: [],
-    certifications: [],
+    internships: 0,
+    skills: [] as string[],
+    certifications: [] as string[],
   });
 
-  const [tempData, setTempData] = useState({ ...profileData });
   const [currentSkill, setCurrentSkill] = useState("");
   const [currentCertification, setCurrentCertification] = useState("");
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setIsLoading(true);
-        const data = await studentService.getProfile();
-        const formattedData = {
-          displayName: data.name || "",
+  const fetchProfile = async () => {
+    try {
+      setIsLoading(true);
+      const data = await getProfile();
+      if (data) {
+        setProfile(data);
+        setTempData({
+          name: data.name || "",
           email: data.email || "",
-          phone: "",
-          collegeName: data.university || "",
-          degree: "",
-          branch: data.major || "",
+          phone: data.phone || "",
+          university: data.university || "",
+          degree: data.degree || "",
+          branch: data.branch || "",
           graduationYear: data.graduationYear?.toString() || "",
-          cgpa: data.gpa?.toString() || "",
-          semester: "",
+          gpa: data.gpa?.toString() || "",
+          semester: data.semester || "",
           githubUsername: data.githubUsername || "",
-          repositoriesCount: "",
-          contributionsCount: "",
-          numberOfInternships: 0,
-          skills: [],
-          certifications: [],
-        };
-        setProfileData(formattedData);
-        setTempData(formattedData);
-      } catch (err: any) {
-        console.error("Failed to fetch profile:", err);
-        toast({
-          title: "Error",
-          description: "Failed to load profile data",
-          variant: "destructive",
+          repositoriesCount: data.repositoriesCount?.toString() || "",
+          contributionsCount: data.contributionsCount?.toString() || "",
+          internships: data.internships || 0,
+          skills: data.skills || [],
+          certifications: data.certifications || [],
         });
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (err) {
+      console.error("Failed to fetch profile:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load profile data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleEdit = (section: string) => {
     setEditSection(section);
-    setTempData({ ...profileData });
+    if (profile) {
+      setTempData({
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        university: profile.university || "",
+        degree: profile.degree || "",
+        branch: profile.branch || "",
+        graduationYear: profile.graduationYear?.toString() || "",
+        gpa: profile.gpa?.toString() || "",
+        semester: profile.semester || "",
+        githubUsername: profile.githubUsername || "",
+        repositoriesCount: profile.repositoriesCount?.toString() || "",
+        contributionsCount: profile.contributionsCount?.toString() || "",
+        internships: profile.internships || 0,
+        skills: profile.skills || [],
+        certifications: profile.certifications || [],
+      });
+    }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (section: string) => {
     try {
       setIsSaving(true);
       
-      const updatePayload: Partial<StudentProfile> = {
-        name: tempData.displayName,
-        email: tempData.email,
-        university: tempData.collegeName,
-        major: tempData.branch,
-        gpa: parseFloat(tempData.cgpa) || undefined,
-        graduationYear: parseInt(tempData.graduationYear) || undefined,
-        githubUsername: tempData.githubUsername,
-      };
+      let updatePayload: UpdateProfileData = {};
 
-      await studentService.updateProfile(updatePayload);
-      setProfileData({ ...tempData });
+      switch (section) {
+        case 'basic':
+          updatePayload = {
+            name: tempData.name,
+            email: tempData.email,
+            phone: tempData.phone,
+          };
+          break;
+        case 'academic':
+          updatePayload = {
+            university: tempData.university,
+            degree: tempData.degree,
+            branch: tempData.branch,
+            graduationYear: parseInt(tempData.graduationYear) || undefined,
+            gpa: parseFloat(tempData.gpa) || undefined,
+            semester: tempData.semester,
+          };
+          break;
+        case 'github':
+          updatePayload = {
+            githubUsername: tempData.githubUsername,
+            repositoriesCount: parseInt(tempData.repositoriesCount) || undefined,
+            contributionsCount: parseInt(tempData.contributionsCount) || undefined,
+          };
+          break;
+        case 'work':
+          updatePayload = {
+            internships: tempData.internships,
+          };
+          break;
+        case 'skills':
+          updatePayload = {
+            skills: tempData.skills,
+          };
+          break;
+        case 'certifications':
+          updatePayload = {
+            certifications: tempData.certifications,
+          };
+          break;
+      }
+
+      await updateProfile(updatePayload);
+      
+      // Refresh profile to get updated data
+      await fetchProfile();
       setEditSection(null);
       
       toast({
         title: "Success",
         description: "Profile updated successfully",
       });
-    } catch (err: any) {
-      console.error("Failed to update profile:", err);
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to update profile:", error);
       toast({
         title: "Error",
-        description: err.message || "Failed to update profile",
+        description: error.message || "Failed to update profile",
         variant: "destructive",
       });
     } finally {
@@ -131,7 +188,25 @@ export default function StudentSettings() {
   };
 
   const handleCancel = () => {
-    setTempData({ ...profileData });
+    if (profile) {
+      setTempData({
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        university: profile.university || "",
+        degree: profile.degree || "",
+        branch: profile.branch || "",
+        graduationYear: profile.graduationYear?.toString() || "",
+        gpa: profile.gpa?.toString() || "",
+        semester: profile.semester || "",
+        githubUsername: profile.githubUsername || "",
+        repositoriesCount: profile.repositoriesCount?.toString() || "",
+        contributionsCount: profile.contributionsCount?.toString() || "",
+        internships: profile.internships || 0,
+        skills: profile.skills || [],
+        certifications: profile.certifications || [],
+      });
+    }
     setEditSection(null);
   };
 
@@ -162,12 +237,25 @@ export default function StudentSettings() {
   };
 
   const incrementInternships = () => {
-    setTempData({ ...tempData, numberOfInternships: tempData.numberOfInternships + 1 });
+    setTempData({ ...tempData, internships: tempData.internships + 1 });
   };
 
   const decrementInternships = () => {
-    if (tempData.numberOfInternships > 0) {
-      setTempData({ ...tempData, numberOfInternships: tempData.numberOfInternships - 1 });
+    if (tempData.internships > 0) {
+      setTempData({ ...tempData, internships: tempData.internships - 1 });
+    }
+  };
+
+  // Get connected wallet address from localStorage
+  const getWalletAddress = () => {
+    try {
+      const address = localStorage.getItem('walletAddress');
+      if (address) {
+        return `${address.slice(0, 6)}...${address.slice(-4)}`;
+      }
+      return 'Not connected';
+    } catch {
+      return 'Not connected';
     }
   };
   
@@ -183,6 +271,25 @@ export default function StudentSettings() {
       </StudentLayout>
     );
   }
+
+  if (!profile) {
+    return (
+      <StudentLayout>
+        <div className="max-w-2xl mx-auto mt-12">
+          <div className="bg-card rounded-2xl border border-border p-8 text-center">
+            <AlertCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-2xl font-bold mb-2">No Profile Found</h2>
+            <p className="text-muted-foreground mb-6">
+              Complete onboarding to set up your profile and start borrowing
+            </p>
+            <Button onClick={() => navigate('/student/onboarding')}>
+              Complete Onboarding
+            </Button>
+          </div>
+        </div>
+      </StudentLayout>
+    );
+  }
   
   return (
     <StudentLayout>
@@ -190,8 +297,23 @@ export default function StudentSettings() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between"
         >
-          <h2 className="text-2xl font-bold mb-6">Profile & Settings</h2>
+          <div>
+            <h2 className="text-2xl font-bold">Profile & Settings</h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              Manage your profile information and preferences
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchProfile}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+            Refresh
+          </Button>
         </motion.div>
 
         {/* Basic Profile Section */}
@@ -208,11 +330,11 @@ export default function StudentSettings() {
             </div>
             {editSection === 'basic' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave} disabled={isSaving}>
+                <Button variant="default" size="sm" onClick={() => handleSave('basic')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
                   {isSaving ? "Saving..." : "Save"}
                 </Button>
@@ -232,8 +354,9 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
-                  value={tempData.displayName}
-                  onChange={(e) => handleInputChange('displayName', e.target.value)}
+                  placeholder="Enter your name"
+                  value={tempData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
                 />
               </div>
               <div>
@@ -241,6 +364,7 @@ export default function StudentSettings() {
                 <input
                   type="email"
                   className="credora-input w-full rounded-xl"
+                  placeholder="Enter your email"
                   value={tempData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                 />
@@ -250,6 +374,7 @@ export default function StudentSettings() {
                 <input
                   type="tel"
                   className="credora-input w-full rounded-xl"
+                  placeholder="Enter your phone number"
                   value={tempData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                 />
@@ -260,19 +385,19 @@ export default function StudentSettings() {
               <div className="flex items-center justify-between py-3 border-b border-border">
                 <div>
                   <p className="font-medium">Display Name</p>
-                  <p className="text-sm text-muted-foreground">{profileData.displayName}</p>
+                  <p className="text-sm text-muted-foreground">{profile.name || 'Not set'}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between py-3 border-b border-border">
                 <div>
                   <p className="font-medium">Email</p>
-                  <p className="text-sm text-muted-foreground">{profileData.email}</p>
+                  <p className="text-sm text-muted-foreground">{profile.email || 'Not set'}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between py-3">
                 <div>
                   <p className="font-medium">Phone Number</p>
-                  <p className="text-sm text-muted-foreground">{profileData.phone}</p>
+                  <p className="text-sm text-muted-foreground">{profile.phone || 'Not set'}</p>
                 </div>
               </div>
             </div>
@@ -293,13 +418,13 @@ export default function StudentSettings() {
             </div>
             {editSection === 'academic' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave}>
+                <Button variant="default" size="sm" onClick={() => handleSave('academic')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </div>
             ) : (
@@ -317,8 +442,9 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
-                  value={tempData.collegeName}
-                  onChange={(e) => handleInputChange('collegeName', e.target.value)}
+                  placeholder="Enter university name"
+                  value={tempData.university}
+                  onChange={(e) => handleInputChange('university', e.target.value)}
                 />
               </div>
               <div>
@@ -326,6 +452,7 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
+                  placeholder="e.g., B.Tech, M.Tech"
                   value={tempData.degree}
                   onChange={(e) => handleInputChange('degree', e.target.value)}
                 />
@@ -335,26 +462,29 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
+                  placeholder="e.g., Computer Science"
                   value={tempData.branch}
                   onChange={(e) => handleInputChange('branch', e.target.value)}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Expected Graduation</label>
+                <label className="block text-sm font-medium mb-2">Expected Graduation Year</label>
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
+                  placeholder="e.g., 2025"
                   value={tempData.graduationYear}
                   onChange={(e) => handleInputChange('graduationYear', e.target.value)}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Current CGPA</label>
+                <label className="block text-sm font-medium mb-2">Current CGPA (0-10)</label>
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
-                  value={tempData.cgpa}
-                  onChange={(e) => handleInputChange('cgpa', e.target.value)}
+                  placeholder="e.g., 8.5"
+                  value={tempData.gpa}
+                  onChange={(e) => handleInputChange('gpa', e.target.value)}
                 />
               </div>
               <div>
@@ -362,6 +492,7 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input w-full rounded-xl"
+                  placeholder="e.g., 6th"
                   value={tempData.semester}
                   onChange={(e) => handleInputChange('semester', e.target.value)}
                 />
@@ -371,27 +502,27 @@ export default function StudentSettings() {
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
               <div className="py-3 border-b border-border">
                 <p className="text-sm text-muted-foreground mb-1">College/University</p>
-                <p className="font-medium">{profileData.collegeName}</p>
+                <p className="font-medium">{profile.university || 'Not set'}</p>
               </div>
               <div className="py-3 border-b border-border">
                 <p className="text-sm text-muted-foreground mb-1">Degree</p>
-                <p className="font-medium">{profileData.degree}</p>
+                <p className="font-medium">{profile.degree || 'Not set'}</p>
               </div>
               <div className="py-3 border-b border-border">
                 <p className="text-sm text-muted-foreground mb-1">Branch</p>
-                <p className="font-medium">{profileData.branch}</p>
+                <p className="font-medium">{profile.branch || 'Not set'}</p>
               </div>
               <div className="py-3 border-b border-border">
                 <p className="text-sm text-muted-foreground mb-1">Expected Graduation</p>
-                <p className="font-medium">{profileData.graduationYear}</p>
+                <p className="font-medium">{profile.graduationYear || 'Not set'}</p>
               </div>
               <div className="py-3">
                 <p className="text-sm text-muted-foreground mb-1">Current CGPA</p>
-                <p className="font-medium">{profileData.cgpa}</p>
+                <p className="font-medium">{profile.gpa?.toFixed(2) || 'Not set'}</p>
               </div>
               <div className="py-3">
                 <p className="text-sm text-muted-foreground mb-1">Current Semester</p>
-                <p className="font-medium">{profileData.semester}</p>
+                <p className="font-medium">{profile.semester || 'Not set'}</p>
               </div>
             </div>
           )}
@@ -411,13 +542,13 @@ export default function StudentSettings() {
             </div>
             {editSection === 'github' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave}>
+                <Button variant="default" size="sm" onClick={() => handleSave('github')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </div>
             ) : (
@@ -440,6 +571,7 @@ export default function StudentSettings() {
                   <input
                     type="text"
                     className="credora-input flex-1 rounded-l-none rounded-r-xl"
+                    placeholder="username"
                     value={tempData.githubUsername}
                     onChange={(e) => handleInputChange('githubUsername', e.target.value)}
                   />
@@ -451,6 +583,7 @@ export default function StudentSettings() {
                   <input
                     type="number"
                     className="credora-input w-full rounded-xl"
+                    placeholder="e.g., 25"
                     value={tempData.repositoriesCount}
                     onChange={(e) => handleInputChange('repositoriesCount', e.target.value)}
                   />
@@ -460,6 +593,7 @@ export default function StudentSettings() {
                   <input
                     type="number"
                     className="credora-input w-full rounded-xl"
+                    placeholder="e.g., 500"
                     value={tempData.contributionsCount}
                     onChange={(e) => handleInputChange('contributionsCount', e.target.value)}
                   />
@@ -470,16 +604,23 @@ export default function StudentSettings() {
             <div className="space-y-4">
               <div className="py-3 border-b border-border">
                 <p className="text-sm text-muted-foreground mb-1">Username</p>
-                <p className="font-medium font-mono">github.com/{profileData.githubUsername}</p>
+                <a
+                  href={`https://github.com/${profile.githubUsername}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium font-mono text-blue-600 hover:underline"
+                >
+                  github.com/{profile.githubUsername}
+                </a>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="py-3">
                   <p className="text-sm text-muted-foreground mb-1">Public Repositories</p>
-                  <p className="font-medium text-lg">{profileData.repositoriesCount}</p>
+                  <p className="font-medium text-lg">{profile.repositoriesCount || 0}</p>
                 </div>
                 <div className="py-3">
                   <p className="text-sm text-muted-foreground mb-1">Total Contributions</p>
-                  <p className="font-medium text-lg">{profileData.contributionsCount}</p>
+                  <p className="font-medium text-lg">{profile.contributionsCount || 0}</p>
                 </div>
               </div>
             </div>
@@ -500,13 +641,13 @@ export default function StudentSettings() {
             </div>
             {editSection === 'work' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave}>
+                <Button variant="default" size="sm" onClick={() => handleSave('work')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </div>
             ) : (
@@ -527,7 +668,7 @@ export default function StudentSettings() {
                     variant="outline"
                     size="icon"
                     onClick={decrementInternships}
-                    disabled={tempData.numberOfInternships === 0}
+                    disabled={tempData.internships === 0}
                     className="h-12 w-12 rounded-xl"
                   >
                     <Minus className="w-5 h-5" />
@@ -536,10 +677,10 @@ export default function StudentSettings() {
                     <input
                       type="number"
                       className="credora-input w-full rounded-xl text-center text-2xl font-bold py-3"
-                      value={tempData.numberOfInternships}
+                      value={tempData.internships}
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
-                        setTempData({ ...tempData, numberOfInternships: Math.max(0, val) });
+                        setTempData({ ...tempData, internships: Math.max(0, val) });
                       }}
                       min="0"
                     />
@@ -561,10 +702,10 @@ export default function StudentSettings() {
               <p className="text-sm text-muted-foreground mb-2">Total Internships Completed</p>
               <div className="flex items-center gap-3">
                 <div className="w-16 h-16 rounded-xl bg-credora-emerald/10 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-credora-emerald">{profileData.numberOfInternships}</span>
+                  <span className="text-2xl font-bold text-credora-emerald">{profile.internships}</span>
                 </div>
                 <p className="font-medium">
-                  {profileData.numberOfInternships === 1 ? 'Internship' : 'Internships'} Completed
+                  {profile.internships === 1 ? 'Internship' : 'Internships'} Completed
                 </p>
               </div>
             </div>
@@ -585,13 +726,13 @@ export default function StudentSettings() {
             </div>
             {editSection === 'skills' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave}>
+                <Button variant="default" size="sm" onClick={() => handleSave('skills')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </div>
             ) : (
@@ -608,7 +749,7 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input flex-1 rounded-xl"
-                  placeholder="Add a skill"
+                  placeholder="Add a skill (e.g., React, Python)"
                   value={currentSkill}
                   onChange={(e) => setCurrentSkill(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())}
@@ -643,14 +784,18 @@ export default function StudentSettings() {
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {profileData.skills.map((skill, index) => (
-                <div
-                  key={index}
-                  className="px-3 py-1.5 rounded-lg bg-credora-emerald/10 text-credora-emerald border border-credora-emerald/20"
-                >
-                  <span className="text-sm font-medium">{skill}</span>
-                </div>
-              ))}
+              {(profile.skills && profile.skills.length > 0) ? (
+                profile.skills.map((skill, index) => (
+                  <div
+                    key={index}
+                    className="px-3 py-1.5 rounded-lg bg-credora-emerald/10 text-credora-emerald border border-credora-emerald/20"
+                  >
+                    <span className="text-sm font-medium">{skill}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No skills added yet</p>
+              )}
             </div>
           )}
         </motion.div>
@@ -669,13 +814,13 @@ export default function StudentSettings() {
             </div>
             {editSection === 'certifications' ? (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
                   <X className="w-4 h-4 mr-1" />
                   Cancel
                 </Button>
-                <Button variant="default" size="sm" onClick={handleSave}>
+                <Button variant="default" size="sm" onClick={() => handleSave('certifications')} disabled={isSaving}>
                   <Save className="w-4 h-4 mr-1" />
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </div>
             ) : (
@@ -692,7 +837,7 @@ export default function StudentSettings() {
                 <input
                   type="text"
                   className="credora-input flex-1 rounded-xl"
-                  placeholder="Add a certification"
+                  placeholder="Add a certification (e.g., AWS Cloud Practitioner)"
                   value={currentCertification}
                   onChange={(e) => setCurrentCertification(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCertification())}
@@ -727,14 +872,18 @@ export default function StudentSettings() {
             </div>
           ) : (
             <div className="space-y-2">
-              {profileData.certifications.map((cert, index) => (
-                <div
-                  key={index}
-                  className="p-3 rounded-lg bg-secondary/50 border border-border"
-                >
-                  <span className="text-sm font-medium">{cert}</span>
-                </div>
-              ))}
+              {(profile.certifications && profile.certifications.length > 0) ? (
+                profile.certifications.map((cert, index) => (
+                  <div
+                    key={index}
+                    className="p-3 rounded-lg bg-secondary/50 border border-border"
+                  >
+                    <span className="text-sm font-medium">{cert}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No certifications added yet</p>
+              )}
             </div>
           )}
         </motion.div>
@@ -757,7 +906,7 @@ export default function StudentSettings() {
               </div>
               <div>
                 <p className="font-medium">MetaMask</p>
-                <p className="text-sm text-muted-foreground font-mono">0x1234...5678</p>
+                <p className="text-sm text-muted-foreground font-mono">{profile.walletAddress ? `${profile.walletAddress.slice(0, 6)}...${profile.walletAddress.slice(-4)}` : getWalletAddress()}</p>
               </div>
             </div>
             <span className="text-xs px-2 py-1 rounded-full bg-credora-emerald/10 text-credora-emerald">
@@ -766,82 +915,11 @@ export default function StudentSettings() {
           </div>
         </motion.div>
 
-        {/* Notifications Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="bg-card rounded-2xl border border-border p-6"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <Bell className="w-5 h-5 text-muted-foreground" />
-            <h3 className="font-semibold">Notifications</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Payment Reminders</p>
-                <p className="text-sm text-muted-foreground">Get notified before due dates</p>
-              </div>
-              <div className="w-12 h-6 rounded-full bg-credora-emerald flex items-center px-1">
-                <div className="w-4 h-4 rounded-full bg-accent-foreground ml-auto" />
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Credit Updates</p>
-                <p className="text-sm text-muted-foreground">Limit changes and opportunities</p>
-              </div>
-              <div className="w-12 h-6 rounded-full bg-credora-emerald flex items-center px-1">
-                <div className="w-4 h-4 rounded-full bg-accent-foreground ml-auto" />
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Marketing Emails</p>
-                <p className="text-sm text-muted-foreground">Tips and product updates</p>
-              </div>
-              <div className="w-12 h-6 rounded-full bg-secondary flex items-center px-1">
-                <div className="w-4 h-4 rounded-full bg-muted-foreground" />
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Security Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="bg-card rounded-2xl border border-border p-6"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <Shield className="w-5 h-5 text-muted-foreground" />
-            <h3 className="font-semibold">Security</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div>
-                <p className="font-medium">Two-Factor Authentication</p>
-                <p className="text-sm text-muted-foreground">Add an extra layer of security</p>
-              </div>
-              <Button variant="outline" size="sm">Enable</Button>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <div>
-                <p className="font-medium">Active Sessions</p>
-                <p className="text-sm text-muted-foreground">Manage your logged in devices</p>
-              </div>
-              <Button variant="outline" size="sm">View</Button>
-            </div>
-          </div>
-        </motion.div>
-
         {/* Danger Zone */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.0 }}
+          transition={{ delay: 0.8 }}
           className="bg-destructive/5 border border-destructive/20 rounded-2xl p-6"
         >
           <div className="flex items-center gap-3 mb-4">
@@ -856,8 +934,4 @@ export default function StudentSettings() {
       </div>
     </StudentLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }

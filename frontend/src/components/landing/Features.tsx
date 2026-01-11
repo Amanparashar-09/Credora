@@ -123,7 +123,7 @@ export function Features() {
                   <div className="space-y-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Reputation Score</span>
-                      <span className="font-medium">847/900</span>
+                      <span className="font-medium">85/100</span>
                     </div>
                     <div className="h-2 bg-secondary rounded-full overflow-hidden">
                       <div className="h-full w-[94%] bg-credora-emerald rounded-full" />

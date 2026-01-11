@@ -612,7 +612,7 @@ export const studentController = {
             used: currentBorrowed.toFixed(2),
             validUntil: student.creditExpiry || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
             interestRate: interestRate,
-            grade: creditScore >= 750 ? 'A+' : creditScore >= 650 ? 'A' : creditScore >= 550 ? 'B' : 'C',
+            grade: creditScore >= 80 ? 'A+' : creditScore >= 65 ? 'A' : creditScore >= 50 ? 'B' : 'C',
           },
           borrowing: {
             totalBorrowed: currentBorrowed.toFixed(2),
@@ -639,8 +639,8 @@ export const studentController = {
             {
               name: 'High Score',
               icon: '⭐',
-              earned: creditScore >= 700,
-              earnedAt: creditScore >= 700 ? student.lastActive : undefined,
+              earned: creditScore >= 70,
+              earnedAt: creditScore >= 70 ? student.lastActive : undefined,
             },
             {
               name: 'Profile Complete',

@@ -2,10 +2,36 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IStudentProfile extends Document {
   walletAddress: string;
-  githubUsername: string;
+  
+  // Basic Information
+  name?: string;
+  email?: string;
+  phone?: string;
+  
+  // Academic Details
+  university?: string;
+  degree?: string;
+  branch?: string;
+  graduationYear?: number;
+  semester?: string;
   gpa: number;
+  
+  // GitHub & Technical
+  githubUsername: string;
+  repositoriesCount?: number;
+  contributionsCount?: number;
+  
+  // Work Experience
   internships: number;
+  
+  // Skills & Certifications
+  skills?: string[];
+  certifications?: string[];
+  
+  // Resume
   resumeHash: string;
+  
+  // Credit Information
   creditScore: number;
   maxBorrowingLimit: number;
   interestRate: number;
@@ -28,9 +54,41 @@ const StudentProfileSchema = new Schema<IStudentProfile>(
       lowercase: true,
       index: true,
     },
-    githubUsername: {
+    
+    // Basic Information
+    name: {
       type: String,
-      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+    },
+    phone: {
+      type: String,
+      trim: true,
+    },
+    
+    // Academic Details
+    university: {
+      type: String,
+      trim: true,
+    },
+    degree: {
+      type: String,
+      trim: true,
+    },
+    branch: {
+      type: String,
+      trim: true,
+    },
+    graduationYear: {
+      type: Number,
+    },
+    semester: {
+      type: String,
+      trim: true,
     },
     gpa: {
       type: Number,
@@ -38,20 +96,50 @@ const StudentProfileSchema = new Schema<IStudentProfile>(
       min: 0,
       max: 10,
     },
+    
+    // GitHub & Technical
+    githubUsername: {
+      type: String,
+      required: true,
+    },
+    repositoriesCount: {
+      type: Number,
+      default: 0,
+    },
+    contributionsCount: {
+      type: Number,
+      default: 0,
+    },
+    
+    // Work Experience
     internships: {
       type: Number,
       required: true,
       min: 0,
     },
+    
+    // Skills & Certifications
+    skills: [{
+      type: String,
+      trim: true,
+    }],
+    certifications: [{
+      type: String,
+      trim: true,
+    }],
+    
+    // Resume
     resumeHash: {
       type: String,
       required: true,
     },
+    
+    // Credit Information
     creditScore: {
       type: Number,
       required: true,
-      min: 300,
-      max: 850,
+      min: 0,
+      max: 100,
     },
     maxBorrowingLimit: {
       type: Number,

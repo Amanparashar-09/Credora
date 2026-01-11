@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { StudentLayout } from "@/components/layouts/StudentLayout";
 import { Button } from "@/components/ui/button";
@@ -14,26 +14,37 @@ import {
   X,
   Plus,
   Minus,
+  User,
+  Settings,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import studentService from "@/services/student.service";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { OnboardingData } from "@/types/api.types";
+import { getProfile, StudentProfile } from "@/services/studentProfile.service";
 
 const steps = [
-  { id: 1, title: "Academic Details", icon: GraduationCap },
-  { id: 2, title: "GitHub Profile", icon: Github },
-  { id: 3, title: "Work Experience", icon: Briefcase },
-  { id: 4, title: "Resume & Documents", icon: FileText },
+  { id: 1, title: "Basic Info", icon: User },
+  { id: 2, title: "Academic Details", icon: GraduationCap },
+  { id: 3, title: "GitHub Profile", icon: Github },
+  { id: 4, title: "Work Experience", icon: Briefcase },
+  { id: 5, title: "Resume & Documents", icon: FileText },
 ];
 
 export default function StudentOnboarding() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [existingProfile, setExistingProfile] = useState<StudentProfile | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
+    // Basic Info
+    name: "",
+    email: "",
+    phone: "",
     // Academic
     collegeName: "",
     degree: "",
@@ -56,6 +67,24 @@ export default function StudentOnboarding() {
   const [currentSkill, setCurrentSkill] = useState("");
   const [currentCertification, setCurrentCertification] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if user has already completed onboarding
+  useEffect(() => {
+    const checkExistingProfile = async () => {
+      try {
+        setIsLoading(true);
+        const profile = await getProfile();
+        if (profile && profile.creditScore > 0) {
+          setExistingProfile(profile);
+        }
+      } catch (err) {
+        console.error("Error checking profile:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkExistingProfile();
+  }, []);
 
   const handleNext = () => {
     if (currentStep < steps.length) {
@@ -171,10 +200,19 @@ export default function StudentOnboarding() {
       setIsSubmitting(true);
       
       // Validate required fields
-      if (!formData.githubUsername || !formData.cgpa || !formData.numberOfInternships.toString() || !formData.resume) {
+      if (!formData.name || !formData.email) {
         toast({
           title: "Missing Required Fields",
-          description: "Please fill in GitHub username, GPA, internships count, and upload your resume",
+          description: "Please fill in your name and email address",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!formData.githubUsername || !formData.cgpa || !formData.resume) {
+        toast({
+          title: "Missing Required Fields",
+          description: "Please fill in GitHub username, GPA, and upload your resume",
           variant: "destructive",
         });
         return;
@@ -192,7 +230,7 @@ export default function StudentOnboarding() {
       }
 
       // Import student profile service
-      const { submitProfile } = await import('@/services/studentProfile.service');
+      const { submitProfile, updateProfile } = await import('@/services/studentProfile.service');
 
       // Prepare profile data for AI scoring
       const profileData = {
@@ -205,11 +243,27 @@ export default function StudentOnboarding() {
       // Submit to AI engine for credit scoring
       const profile = await submitProfile(profileData);
 
+      // Update profile with additional fields (basic info, academic, etc.)
+      await updateProfile({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        university: formData.collegeName,
+        degree: formData.degree,
+        branch: formData.branch,
+        graduationYear: parseInt(formData.graduationYear) || undefined,
+        semester: formData.semester,
+        repositoriesCount: parseInt(formData.repositoriesCount) || undefined,
+        contributionsCount: parseInt(formData.contributionsCount) || undefined,
+        skills: formData.skills,
+        certifications: formData.certifications,
+      });
+
       // Also submit standard onboarding data if fields are filled
       if (formData.collegeName && formData.branch) {
         const onboardingData: Partial<OnboardingData> = {
-          name: formData.collegeName,
-          email: "",
+          name: formData.name,
+          email: formData.email,
           university: formData.collegeName,
           major: formData.branch,
           gpa: gpa,
@@ -241,6 +295,118 @@ export default function StudentOnboarding() {
 
   return (
     <StudentLayout>
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Checking profile status...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Already Completed State */}
+      {!isLoading && existingProfile && (
+        <div className="max-w-2xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card rounded-2xl border border-border p-8 text-center"
+          >
+            {/* Success Icon */}
+            <div className="w-24 h-24 rounded-full bg-credora-emerald/10 flex items-center justify-center mx-auto mb-6">
+              <Sparkles className="w-12 h-12 text-credora-emerald" />
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold mb-2">Profile Completed!</h2>
+            <p className="text-muted-foreground mb-8">
+              You have already completed your onboarding. Your credit profile is active.
+            </p>
+
+            {/* Credit Score Display */}
+            <div className="bg-gradient-to-br from-credora-emerald/10 to-credora-navy/10 rounded-2xl p-6 mb-8">
+              <div className="grid sm:grid-cols-3 gap-6">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Credit Score</p>
+                  <p className="text-3xl font-bold text-credora-emerald">{existingProfile.creditScore}</p>
+                  <p className="text-xs text-muted-foreground">out of 100</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Available Credit</p>
+                  <p className="text-3xl font-bold">${parseFloat(existingProfile.availableCredit || '0').toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">USDC</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Risk Tier</p>
+                  <p className={cn(
+                    "text-2xl font-bold",
+                    existingProfile.riskTier === 'LOW' && "text-credora-emerald",
+                    existingProfile.riskTier === 'MEDIUM' && "text-yellow-500",
+                    existingProfile.riskTier === 'HIGH' && "text-red-500"
+                  )}>
+                    {existingProfile.riskTier}
+                  </p>
+                  <p className="text-xs text-muted-foreground">tier</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Summary */}
+            {existingProfile.name && (
+              <div className="bg-secondary/50 rounded-xl p-4 mb-8 text-left">
+                <div className="grid sm:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Name</p>
+                    <p className="font-medium">{existingProfile.name}</p>
+                  </div>
+                  {existingProfile.email && (
+                    <div>
+                      <p className="text-muted-foreground">Email</p>
+                      <p className="font-medium">{existingProfile.email}</p>
+                    </div>
+                  )}
+                  {existingProfile.university && (
+                    <div>
+                      <p className="text-muted-foreground">University</p>
+                      <p className="font-medium">{existingProfile.university}</p>
+                    </div>
+                  )}
+                  {existingProfile.githubUsername && (
+                    <div>
+                      <p className="text-muted-foreground">GitHub</p>
+                      <p className="font-medium">@{existingProfile.githubUsername}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                variant="outline"
+                onClick={() => navigate('/student/credit')}
+                className="rounded-xl"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                View Credit Details
+              </Button>
+              <Button
+                variant="hero"
+                onClick={() => navigate('/student/settings')}
+                className="rounded-xl"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Update Profile
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Normal Onboarding Flow */}
+      {!isLoading && !existingProfile && (
       <div className="max-w-3xl mx-auto">
         {/* Progress Steps */}
         <div className="mb-8">
@@ -291,6 +457,55 @@ export default function StudentOnboarding() {
           className="bg-card rounded-2xl border border-border p-8"
         >
           {currentStep === 1 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold mb-2">Basic Information</h2>
+                <p className="text-muted-foreground text-sm">
+                  Tell us about yourself
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Full Name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="Enter your full name"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Email Address <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="your.email@example.com"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="+91 XXXXX XXXXX"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {currentStep === 2 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold mb-2">Academic Details</h2>
@@ -416,7 +631,7 @@ export default function StudentOnboarding() {
             </div>
           )}
 
-          {currentStep === 2 && (
+          {currentStep === 3 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold mb-2">GitHub Profile</h2>
@@ -491,7 +706,7 @@ export default function StudentOnboarding() {
             </div>
           )}
 
-          {currentStep === 3 && (
+          {currentStep === 4 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold mb-2">Work Experience</h2>
@@ -606,7 +821,7 @@ export default function StudentOnboarding() {
             </div>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold mb-2">Resume & Documents</h2>
@@ -687,6 +902,7 @@ export default function StudentOnboarding() {
           </div>
         </motion.div>
       </div>
+      )}
     </StudentLayout>
   );
 }

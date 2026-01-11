@@ -22,7 +22,7 @@ export default function Reputation() {
         setBadges(dashboard.badges || []);
         setReputationScore(dashboard.credit.score);
         // Calculate percentile based on score (simplified)
-        const calculatedPercentile = Math.min(100, Math.floor((dashboard.credit.score / 900) * 100));
+        const calculatedPercentile = Math.min(100, Math.floor((dashboard.credit.score / 100) * 100));
         setPercentile(calculatedPercentile);
       } catch (err: any) {
         console.error("Failed to fetch reputation data:", err);
@@ -54,7 +54,7 @@ export default function Reputation() {
 
   const earnedBadges = badges.filter((b) => b.earned);
   const pendingBadges = badges.filter((b) => !b.earned);
-  const maxScore = 900;
+  const maxScore = 100;
 
   return (
     <StudentLayout>

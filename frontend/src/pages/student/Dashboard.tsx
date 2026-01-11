@@ -16,13 +16,26 @@ import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import studentService from "@/services/student.service";
 import { formatUSDT } from "@/utils/currency";
-import type { StudentDashboard as DashboardData } from "@/types/api.types";
+import type { StudentDashboard as DashboardData, Transaction } from "@/types/api.types";
 import { cn } from "@/lib/utils";
 
 export default function StudentDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>([]);
+
+  // Load local transactions from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('student_transactions');
+    if (stored) {
+      try {
+        setLocalTransactions(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse stored transactions');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -75,6 +88,17 @@ export default function StudentDashboard() {
     badges = [] 
   } = dashboardData;
 
+  // Merge and dedupe transactions (local + API), sort by date
+  const allTransactions = [...localTransactions];
+  recentTransactions.forEach(tx => {
+    if (!allTransactions.find(t => t.id === tx.id || t.txHash === tx.txHash)) {
+      allTransactions.push(tx);
+    }
+  });
+  const sortedTransactions = allTransactions.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
   return (
     <StudentLayout>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -107,7 +131,7 @@ export default function StudentDashboard() {
                 <div className="text-sm">
                   <span className="text-primary-foreground/70">Credit Score: </span>
                   <span className="font-bold text-credora-emerald">{credit.score}</span>
-                  <span className="text-primary-foreground/60 ml-1">/ 900</span>
+                  <span className="text-primary-foreground/60 ml-1">/ 100</span>
                 </div>
               </div>
             </div>
@@ -205,8 +229,8 @@ export default function StudentDashboard() {
               </Link>
             </div>
             <div className="space-y-4">
-              {recentTransactions.length > 0 ? (
-                recentTransactions.slice(0, 4).map((tx) => (
+              {sortedTransactions.length > 0 ? (
+                sortedTransactions.slice(0, 4).map((tx) => (
                   <div
                     key={tx.id}
                     className="flex items-center justify-between py-3 border-b border-border last:border-0"

@@ -20,22 +20,57 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
-import { getProfile, refreshScore, StudentProfile } from "@/services/studentProfile.service";
+import { getProfile, refreshScore, syncBorrowingData, StudentProfile } from "@/services/studentProfile.service";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
+interface LocalTransaction {
+  id: string;
+  type: 'borrow' | 'repay';
+  amount: string;
+  timestamp: string;
+  txHash: string;
+  status: 'completed' | 'pending' | 'failed';
+}
+
 export default function CreditDetails() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [transactions, setTransactions] = useState<LocalTransaction[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Load transactions from localStorage
+  const loadTransactions = () => {
+    try {
+      const stored = localStorage.getItem('credora_transactions');
+      if (stored) {
+        const parsed = JSON.parse(stored) as LocalTransaction[];
+        // Sort by timestamp descending (newest first)
+        setTransactions(parsed.sort((a, b) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        ));
+      }
+    } catch (err) {
+      console.error('Failed to load transactions:', err);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
       setIsLoading(true);
+      
+      // First sync borrowing data from blockchain
+      try {
+        await syncBorrowingData();
+      } catch (syncErr) {
+        console.error("Failed to sync borrowing data:", syncErr);
+      }
+      
+      // Then fetch updated profile
       const data = await getProfile();
       setProfile(data);
     } catch (err) {
@@ -55,15 +90,29 @@ export default function CreditDetails() {
 
   useEffect(() => {
     fetchProfile();
+    loadTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRefreshScore = async () => {
     try {
       setIsRefreshing(true);
+      
+      // Sync borrowing data from blockchain first
+      try {
+        await syncBorrowingData();
+      } catch (syncErr) {
+        console.error("Failed to sync borrowing data:", syncErr);
+      }
+      
+      // Then refresh credit score
       const updatedProfile = await refreshScore();
-      setProfile(updatedProfile);
-      sonnerToast.success('Credit limits refreshed successfully');
+      
+      // Fetch complete profile to get updated values
+      const fullProfile = await getProfile();
+      setProfile(fullProfile);
+      
+      sonnerToast.success('Credit data refreshed successfully');
     } catch (err) {
       const error = err as Error;
       sonnerToast.error(error.message);
@@ -86,16 +135,16 @@ export default function CreditDetails() {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 750) return 'text-green-600';
-    if (score >= 650) return 'text-blue-600';
-    if (score >= 550) return 'text-yellow-600';
+    if (score >= 80) return 'text-green-600';
+    if (score >= 65) return 'text-blue-600';
+    if (score >= 50) return 'text-yellow-600';
     return 'text-red-600';
   };
 
   const getGrade = (score: number) => {
-    if (score >= 750) return 'A+';
-    if (score >= 650) return 'A';
-    if (score >= 550) return 'B';
+    if (score >= 80) return 'A+';
+    if (score >= 65) return 'A';
+    if (score >= 50) return 'B';
     return 'C';
   };
 
@@ -151,9 +200,9 @@ export default function CreditDetails() {
     },
     {
       factor: "Payment History",
-      score: profile.defaultCount === 0 ? 100 : Math.max(0, 100 - (profile.defaultCount * 20)),
+      score: (profile.defaultCount ?? 0) === 0 ? 100 : Math.max(0, 100 - ((profile.defaultCount ?? 0) * 20)),
       impact: "High" as const,
-      description: `${profile.defaultCount} default${profile.defaultCount !== 1 ? 's' : ''} on record`,
+      description: `${profile.defaultCount ?? 0} default${(profile.defaultCount ?? 0) !== 1 ? 's' : ''} on record`,
     },
   ];
 
@@ -192,7 +241,7 @@ export default function CreditDetails() {
             <div className={`text-3xl font-bold ${getScoreColor(profile.creditScore)}`}>
               {profile.creditScore}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Out of 850</p>
+            <p className="text-xs text-muted-foreground mt-1">Out of 100</p>
           </motion.div>
 
           <motion.div
@@ -333,7 +382,7 @@ export default function CreditDetails() {
                 <div>
                   <p className="text-xs text-muted-foreground">Code Quality</p>
                   <p className="text-sm font-medium">
-                    {profile.creditScore >= 750 ? 'Exceptional' : profile.creditScore >= 650 ? 'High Quality' : profile.creditScore >= 550 ? 'Good' : 'Developing'}
+                    {profile.creditScore >= 80 ? 'Exceptional' : profile.creditScore >= 65 ? 'High Quality' : profile.creditScore >= 50 ? 'Good' : 'Developing'}
                   </p>
                 </div>
               </div>
@@ -374,10 +423,10 @@ export default function CreditDetails() {
               <div className="bg-secondary/30 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-muted-foreground">Payment History</p>
-                  <CheckCircle className={`h-3 w-3 ${profile.defaultCount === 0 ? 'text-credora-emerald' : 'text-red-500'}`} />
+                  <CheckCircle className={`h-3 w-3 ${(profile.defaultCount ?? 0) === 0 ? 'text-credora-emerald' : 'text-red-500'}`} />
                 </div>
-                <p className="text-2xl font-bold">{profile.defaultCount === 0 ? 100 : Math.max(0, 100 - (profile.defaultCount * 20))}</p>
-                <p className="text-xs text-muted-foreground mt-1">{profile.defaultCount} defaults</p>
+                <p className="text-2xl font-bold">{(profile.defaultCount ?? 0) === 0 ? 100 : Math.max(0, 100 - ((profile.defaultCount ?? 0) * 20))}</p>
+                <p className="text-xs text-muted-foreground mt-1">{profile.defaultCount ?? 0} defaults</p>
               </div>
             </div>
           </div>
@@ -510,7 +559,7 @@ export default function CreditDetails() {
               Based on our AI analysis, you've been assigned a credit limit of{" "}
               <strong>${parseFloat(profile.maxBorrowingLimit).toLocaleString()}</strong>. Your {profile.gpa >= 8 ? 'strong' : 'solid'} academic record ({profile.gpa.toFixed(2)} GPA), 
               consistent GitHub activity (@{profile.githubUsername}), and {profile.internships}{" "}
-              verified internship{profile.internships !== 1 ? 's' : ''} indicate {profile.creditScore >= 750 ? 'exceptional' : profile.creditScore >= 650 ? 'high' : 'good'} earning potential post-graduation. 
+              verified internship{profile.internships !== 1 ? 's' : ''} indicate {profile.creditScore >= 80 ? 'exceptional' : profile.creditScore >= 65 ? 'high' : 'good'} earning potential post-graduation. 
               Your interest rate of <strong>{profile.interestRate}% p.a.</strong> reflects your{" "}
               <strong>{profile.riskTier}</strong> risk tier based on comprehensive profile analysis.
             </p>
@@ -559,26 +608,82 @@ export default function CreditDetails() {
           className="bg-card rounded-2xl border border-border p-8"
         >
           <h3 className="font-semibold mb-6">Borrowing History</h3>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Total Borrowed</p>
               <p className="text-2xl font-semibold">
-                ${parseFloat(profile.totalBorrowed).toLocaleString()}
+                ${parseFloat(profile.totalBorrowed || '0').toLocaleString()}
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Total Repaid</p>
               <p className="text-2xl font-semibold text-green-600">
-                ${parseFloat(profile.totalRepaid).toLocaleString()}
+                ${parseFloat(profile.totalRepaid || '0').toLocaleString()}
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Defaults</p>
               <p className="text-2xl font-semibold text-red-600">
-                {profile.defaultCount}
+                {profile.defaultCount ?? 0}
               </p>
             </div>
           </div>
+
+          {/* Transaction History */}
+          <div className="border-t pt-6">
+            <h4 className="text-sm font-medium mb-4">Recent Transactions</h4>
+            {transactions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm">No transactions yet</p>
+                <p className="text-xs mt-1">Your borrow and repay history will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {transactions.slice(0, 10).map((tx) => (
+                  <div 
+                    key={tx.id} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center",
+                        tx.type === 'borrow' ? 'bg-blue-500/10' : 'bg-green-500/10'
+                      )}>
+                        {tx.type === 'borrow' ? (
+                          <ArrowUpRight className="h-4 w-4 text-blue-500" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium capitalize">{tx.type}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(tx.timestamp).toLocaleDateString()} at {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={cn(
+                        "text-sm font-semibold",
+                        tx.type === 'borrow' ? 'text-blue-600' : 'text-green-600'
+                      )}>
+                        {tx.type === 'borrow' ? '+' : '-'}${parseFloat(tx.amount).toLocaleString()}
+                      </p>
+                      <a
+                        href={`https://hoodi.etherscan.io/tx/${tx.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-muted-foreground hover:text-blue-500 hover:underline"
+                      >
+                        {tx.txHash.slice(0, 8)}...{tx.txHash.slice(-6)}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-6 pt-6 border-t">
             <p className="text-xs text-muted-foreground">
               Last updated: {new Date(profile.lastUpdated).toLocaleString()}
@@ -633,18 +738,6 @@ export default function CreditDetails() {
             </div>
           </div>
         </motion.div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-4">
-          <Button size="lg" onClick={() => navigate('/student/slices')}>
-            <DollarSign className="mr-2 h-5 w-5" />
-            Borrow Funds
-          </Button>
-          <Button size="lg" variant="outline" onClick={() => navigate('/student/onboarding')}>
-            <Upload className="mr-2 h-5 w-5" />
-            Update Profile
-          </Button>
-        </div>
       </div>
     </StudentLayout>
   );

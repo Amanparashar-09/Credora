@@ -4,7 +4,9 @@ import { authenticate, requireRole } from '../middleware/auth';
 import {
   submitStudentProfile,
   getStudentProfile,
+  updateStudentProfile,
   refreshCreditScore,
+  syncBorrowingData,
 } from '../controllers/studentProfile.controller';
 
 const router = Router();
@@ -34,7 +36,13 @@ router.post('/profile', upload.single('resume'), submitStudentProfile);
 // Get student profile
 router.get('/profile', getStudentProfile);
 
+// Update student profile (basic info, academic details, etc.)
+router.put('/profile', updateStudentProfile);
+
 // Refresh credit score and limits
 router.post('/refresh-score', refreshCreditScore);
+
+// Sync borrowing data from blockchain
+router.post('/sync-borrowing', syncBorrowingData);
 
 export default router;

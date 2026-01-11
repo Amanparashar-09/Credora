@@ -25,8 +25,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { cn } from "@/lib/utils";
 import studentService from "@/services/student.service";
 import blockchainService from "@/services/blockchain.service";
+import { syncBorrowingData } from "@/services/studentProfile.service";
 import { useToast } from "@/hooks/use-toast";
-import { formatUSDT } from "@/utils/currency";
+import { formatUSDT, weiToUSDT } from "@/utils/currency";
 import type { Transaction, StudentDashboard } from "@/types/api.types";
 
 interface PaymentSlice {
@@ -51,7 +52,45 @@ export default function Slices() {
   const [showRepayDialog, setShowRepayDialog] = useState(false);
   const [paymentSlices, setPaymentSlices] = useState<PaymentSlice[]>([]);
   const [numberOfSlices, setNumberOfSlices] = useState("10");
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>([]);
+  const [paidSliceIds, setPaidSliceIds] = useState<number[]>([]);
   const { toast } = useToast();
+
+  // Load local transactions from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('student_transactions');
+    if (stored) {
+      try {
+        setLocalTransactions(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse stored transactions');
+      }
+    }
+    
+    // Load paid slice IDs
+    const storedPaidSlices = localStorage.getItem('paid_slice_ids');
+    if (storedPaidSlices) {
+      try {
+        setPaidSliceIds(JSON.parse(storedPaidSlices));
+      } catch (e) {
+        console.error('Failed to parse paid slice IDs');
+      }
+    }
+  }, []);
+
+  // Helper function to save transaction to localStorage
+  const saveTransaction = (tx: Transaction) => {
+    const newTransactions = [tx, ...localTransactions];
+    setLocalTransactions(newTransactions);
+    localStorage.setItem('student_transactions', JSON.stringify(newTransactions));
+  };
+
+  // Helper function to save paid slice ID
+  const savePaidSlice = (sliceId: number) => {
+    const newPaidSlices = [...paidSliceIds, sliceId];
+    setPaidSliceIds(newPaidSlices);
+    localStorage.setItem('paid_slice_ids', JSON.stringify(newPaidSlices));
+  };
 
   useEffect(() => {
     fetchData();
@@ -62,7 +101,7 @@ export default function Slices() {
     if (dashboardData) {
       generatePaymentSlices();
     }
-  }, [dashboardData]);
+  }, [dashboardData, paidSliceIds]);
 
   const generatePaymentSlices = () => {
     if (!dashboardData) return;
@@ -85,9 +124,18 @@ export default function Slices() {
     let remainingPrincipal = totalBorrowed;
     const today = new Date();
 
+    // Get the borrowing start date from localStorage or use today
+    const borrowingStartKey = 'borrowing_start_date';
+    let borrowingStartDate = localStorage.getItem(borrowingStartKey);
+    if (!borrowingStartDate) {
+      borrowingStartDate = today.toISOString();
+      localStorage.setItem(borrowingStartKey, borrowingStartDate);
+    }
+    const startDate = new Date(borrowingStartDate);
+
     for (let i = 0; i < sliceCount; i++) {
-      const dueDate = new Date(today);
-      dueDate.setDate(today.getDate() + (i + 1) * 30); // 30 days apart
+      const dueDate = new Date(startDate);
+      dueDate.setDate(startDate.getDate() + (i + 1) * 30); // 30 days apart from borrow date
 
       const interestForSlice = remainingPrincipal * monthlyInterestRate;
       const principalForSlice = emi - interestForSlice;
@@ -95,11 +143,18 @@ export default function Slices() {
 
       const daysDiff = Math.floor((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       
-      let status: 'upcoming' | 'due' | 'paid' | 'overdue' = 'upcoming';
-      if (daysDiff < 0) {
+      // Check if this slice was already paid
+      const isPaid = paidSliceIds.includes(i + 1);
+      
+      let status: 'upcoming' | 'due' | 'paid' | 'overdue';
+      if (isPaid) {
+        status = 'paid';
+      } else if (daysDiff < 0) {
         status = 'overdue';
       } else if (daysDiff <= 7) {
         status = 'due';
+      } else {
+        status = 'upcoming';
       }
 
       slices.push({
@@ -110,6 +165,7 @@ export default function Slices() {
         status: status,
         principal: principalForSlice,
         interest: interestForSlice,
+        paidDate: isPaid ? new Date().toISOString() : undefined,
       });
     }
 
@@ -199,6 +255,21 @@ export default function Slices() {
       // Now borrow
       const result = await blockchainService.borrowFunds(amount.toString());
       
+      // Save transaction to localStorage
+      saveTransaction({
+        id: result.txHash,
+        type: 'borrow',
+        amount: amount.toString(), // Store in USDT, not wei
+        timestamp: new Date().toISOString(),
+        txHash: result.txHash,
+        status: 'completed',
+      });
+
+      // Reset paid slices and set new borrowing start date for fresh loan
+      setPaidSliceIds([]);
+      localStorage.setItem('paid_slice_ids', JSON.stringify([]));
+      localStorage.setItem('borrowing_start_date', new Date().toISOString());
+      
       toast({
         title: "Borrow Successful",
         description: `Successfully borrowed ${formatUSDT(amount)}. Transaction: ${result.txHash.slice(0, 10)}...`,
@@ -206,6 +277,13 @@ export default function Slices() {
       
       setShowBorrowDialog(false);
       setBorrowAmount("");
+      
+      // Sync borrowing data with backend
+      try {
+        await syncBorrowingData();
+      } catch (syncErr) {
+        console.error('Failed to sync borrowing data:', syncErr);
+      }
       
       // Refresh data after borrowing
       setTimeout(fetchData, 2000);
@@ -254,6 +332,16 @@ export default function Slices() {
       // Call smart contract repay function (includes USDT approval)
       const result = await blockchainService.repayLoan(amount.toString());
       
+      // Save transaction to localStorage
+      saveTransaction({
+        id: result.txHash,
+        type: 'repay',
+        amount: amount.toString(), // Store in USDT, not wei
+        timestamp: new Date().toISOString(),
+        txHash: result.txHash,
+        status: 'completed',
+      });
+      
       toast({
         title: "Repayment Successful",
         description: `Successfully repaid ${formatUSDT(amount)}. Transaction: ${result.txHash.slice(0, 10)}...`,
@@ -261,6 +349,13 @@ export default function Slices() {
       
       setShowRepayDialog(false);
       setRepayAmount("");
+      
+      // Sync borrowing data with backend
+      try {
+        await syncBorrowingData();
+      } catch (syncErr) {
+        console.error('Failed to sync borrowing data:', syncErr);
+      }
       
       // Refresh data after repayment
       setTimeout(fetchData, 2000);
@@ -277,14 +372,27 @@ export default function Slices() {
 
   const handlePaySlice = async (slice: PaymentSlice) => {
     try {
-      // Connect wallet if not connected
-      const walletAddress = localStorage.getItem('wallet_address');
-      if (!walletAddress) {
-        await blockchainService.connectWallet();
+      // Always ensure wallet is connected and signer is set
+      const address = await blockchainService.connectWallet();
+      if (!address) {
+        throw new Error('Please connect your wallet first');
       }
 
       // Call smart contract repay function with slice amount (includes USDT approval)
       const result = await blockchainService.paySlice(slice.amount.toString());
+      
+      // Save transaction to localStorage
+      saveTransaction({
+        id: result.txHash,
+        type: 'repay',
+        amount: slice.amount.toString(), // Store in USDT, not wei
+        timestamp: new Date().toISOString(),
+        txHash: result.txHash,
+        status: 'completed',
+      });
+
+      // Save paid slice ID to localStorage
+      savePaidSlice(slice.id);
       
       toast({
         title: "Slice Payment Successful",
@@ -299,6 +407,13 @@ export default function Slices() {
             : s
         )
       );
+
+      // Sync borrowing data with backend
+      try {
+        await syncBorrowingData();
+      } catch (syncErr) {
+        console.error('Failed to sync borrowing data:', syncErr);
+      }
 
       // Refresh dashboard data
       setTimeout(fetchData, 2000);
@@ -365,13 +480,15 @@ export default function Slices() {
     );
   }
 
-  const { credit, borrowing, recentTransactions = [] } = dashboardData;
+  const { credit, borrowing } = dashboardData;
   const availableCredit = parseFloat(credit.available);
   const totalBorrowed = parseFloat(borrowing.totalBorrowed);
   const nextPayment = parseFloat(borrowing.nextPaymentAmount);
 
-  const borrowTransactions = recentTransactions.filter(t => t.type === 'borrow');
-  const repayTransactions = recentTransactions.filter(t => t.type === 'repay');
+  // Use local transactions (stored in localStorage) which have correct USDT values
+  const recentTransactions = localTransactions;
+  const borrowTransactions = localTransactions.filter(t => t.type === 'borrow');
+  const repayTransactions = localTransactions.filter(t => t.type === 'repay');
 
   return (
     <StudentLayout>

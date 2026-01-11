@@ -21,10 +21,29 @@ export interface StudentProfileData {
 
 export interface StudentProfile {
   walletAddress: string;
-  githubUsername: string;
+  // Basic info
+  name?: string;
+  email?: string;
+  phone?: string;
+  // Academic
+  university?: string;
+  degree?: string;
+  branch?: string;
+  graduationYear?: number;
+  semester?: string;
   gpa: number;
+  // GitHub
+  githubUsername: string;
+  repositoriesCount?: number;
+  contributionsCount?: number;
+  // Work
   internships: number;
+  // Skills
+  skills?: string[];
+  certifications?: string[];
+  // Resume
   resumeHash: string;
+  // Credit info
   creditScore: number;
   maxBorrowingLimit: string;
   availableCredit: string;
@@ -37,6 +56,24 @@ export interface StudentProfile {
   lastUpdated: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateProfileData {
+  name?: string;
+  email?: string;
+  phone?: string;
+  university?: string;
+  degree?: string;
+  branch?: string;
+  graduationYear?: number;
+  semester?: string;
+  gpa?: number;
+  githubUsername?: string;
+  repositoriesCount?: number;
+  contributionsCount?: number;
+  internships?: number;
+  skills?: string[];
+  certifications?: string[];
 }
 
 /**
@@ -99,6 +136,34 @@ export const getProfile = async (): Promise<StudentProfile | null> => {
 };
 
 /**
+ * Update student profile (basic info, academic details, etc.)
+ */
+export const updateProfile = async (
+  data: UpdateProfileData
+): Promise<StudentProfile> => {
+  try {
+    const response = await axios.put(
+      `${API_URL}/student-profile/profile`,
+      data,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+      }
+    );
+
+    return response.data.data;
+  } catch (error) {
+    const axiosError = error as AxiosError<{ message?: string }>;
+    console.error('Error updating profile:', error);
+    throw new Error(
+      axiosError.response?.data?.message || 'Failed to update profile'
+    );
+  }
+};
+
+/**
  * Refresh credit score and borrowing limits
  */
 export const refreshScore = async (): Promise<StudentProfile> => {
@@ -117,6 +182,36 @@ export const refreshScore = async (): Promise<StudentProfile> => {
     console.error('Error refreshing score:', error);
     throw new Error(
       axiosError.response?.data?.message || 'Failed to refresh score'
+    );
+  }
+};
+
+/**
+ * Sync borrowing data from blockchain
+ */
+export const syncBorrowingData = async (): Promise<{
+  currentBorrowed: number;
+  totalBorrowed: number;
+  totalRepaid: number;
+  defaultCount: number;
+  availableCredit: number;
+  lastUpdated: string;
+}> => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/student-profile/sync-borrowing`,
+      {},
+      {
+        headers: getAuthHeaders(),
+      }
+    );
+
+    return response.data.data;
+  } catch (error) {
+    const axiosError = error as AxiosError<{ message?: string }>;
+    console.error('Error syncing borrowing data:', error);
+    throw new Error(
+      axiosError.response?.data?.message || 'Failed to sync borrowing data'
     );
   }
 };

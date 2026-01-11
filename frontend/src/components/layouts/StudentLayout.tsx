@@ -17,7 +17,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/lib/userContext";
 import authService from "@/services/auth.service";
-import studentService from "@/services/student.service";
+import { getProfile } from "@/services/studentProfile.service";
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -36,13 +36,18 @@ export function StudentLayout({ children }: StudentLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { walletAddress } = useUser();
-  const [studentName, setStudentName] = useState<string>("");
+  const [studentName, setStudentName] = useState<string>("Student");
 
   useEffect(() => {
     const fetchStudentData = async () => {
       try {
-        const profile = await studentService.getProfile();
-        setStudentName(profile.fullName || "Student");
+        const profile = await getProfile();
+        // Use name if available, otherwise fall back to "Student"
+        if (profile && profile.name) {
+          setStudentName(profile.name);
+        } else {
+          setStudentName("Student");
+        }
       } catch (error) {
         console.error("Failed to fetch student profile:", error);
         setStudentName("Student");
@@ -63,7 +68,7 @@ export function StudentLayout({ children }: StudentLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="h-screen bg-background flex overflow-hidden">
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div
@@ -75,7 +80,7 @@ export function StudentLayout({ children }: StudentLayoutProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 w-72 bg-card border-r border-border flex flex-col transition-transform duration-300 lg:translate-x-0",
+          "fixed lg:sticky top-0 inset-y-0 left-0 z-50 w-72 h-screen bg-card border-r border-border flex flex-col transition-transform duration-300 lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -131,9 +136,9 @@ export function StudentLayout({ children }: StudentLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4 flex items-center justify-between">
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -159,7 +164,7 @@ export function StudentLayout({ children }: StudentLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6 overflow-y-auto">{children}</main>
       </div>
     </div>
   );
