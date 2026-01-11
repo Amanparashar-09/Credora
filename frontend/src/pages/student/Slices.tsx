@@ -158,10 +158,16 @@ export default function Slices() {
     try {
       setIsBorrowing(true);
       
-      // Connect wallet if not connected
-      const walletAddress = localStorage.getItem('wallet_address');
+      // Connect wallet if not connected and get address
+      let walletAddress = localStorage.getItem('wallet_address');
       if (!walletAddress) {
-        await blockchainService.connectWallet();
+        const { address } = await blockchainService.connectWallet();
+        walletAddress = address;
+        localStorage.setItem('wallet_address', address);
+      }
+
+      if (!walletAddress) {
+        throw new Error('Failed to get wallet address. Please connect your wallet.');
       }
 
       // Check if credit is valid on-chain

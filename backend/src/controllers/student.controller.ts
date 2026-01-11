@@ -298,11 +298,35 @@ export const studentController = {
         throw new ValidationError('Please complete credit scoring first');
       }
 
+      // Calculate credit limit from score if it's 0 or missing
+      let creditLimitInUsdt: number;
+      const storedLimit = student.creditLimit;
+      
+      // Check if the stored limit is in wei format (very large number, > 1e15)
+      // or in USD format (small number like 500, 1000, 10000)
+      const storedLimitNum = parseFloat(storedLimit);
+      
+      if (storedLimitNum > 1e15) {
+        // Already in wei format, convert back to USD
+        creditLimitInUsdt = storedLimitNum / 1e18;
+      } else if (storedLimitNum > 0) {
+        // Already in USD format
+        creditLimitInUsdt = storedLimitNum;
+      } else {
+        // Calculate from score
+        const score = student.creditScore;
+        if (score < 20) creditLimitInUsdt = 500;
+        else if (score < 40) creditLimitInUsdt = 1000;
+        else if (score < 60) creditLimitInUsdt = 2500;
+        else if (score < 80) creditLimitInUsdt = 5000;
+        else creditLimitInUsdt = 10000;
+      }
+
       // Create fresh attestation (this fetches on-chain nonce internally)
       const { attestation, signature } = await oracleService.createCreditAttestation(
         req.user!.address,
         student.creditScore,
-        parseFloat(student.creditLimit)
+        creditLimitInUsdt
       );
 
       res.json({
