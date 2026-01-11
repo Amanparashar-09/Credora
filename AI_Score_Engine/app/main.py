@@ -6,6 +6,10 @@ from app.Scoring.credit_scorer import calculate_credit_score
 
 app = FastAPI(title="Credora AI Engine")
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "Credora AI Engine"}
+
 @app.post("/score")
 async def score_student(
     github_username: str = Form(...),
