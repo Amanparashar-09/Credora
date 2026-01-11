@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronRight,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -67,6 +68,7 @@ export default function StudentDashboard() {
   }
 
   const { 
+    profile,
     credit, 
     borrowing, 
     recentTransactions = [], 
@@ -76,7 +78,7 @@ export default function StudentDashboard() {
   return (
     <StudentLayout>
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Credit Overview Card */}
+        {/* Credit Overview Card - Main focus */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -84,9 +86,16 @@ export default function StudentDashboard() {
         >
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
-              <p className="text-primary-foreground/70 mb-2">Available Credit</p>
+              <div className="flex items-center gap-3 mb-2">
+                <p className="text-primary-foreground/70">Available Credit</p>
+                {profile?.name && (
+                  <span className="text-sm bg-primary-foreground/10 px-3 py-1 rounded-full">
+                    {profile.name}
+                  </span>
+                )}
+              </div>
               <h2 className="text-4xl lg:text-5xl font-bold mb-4">{formatUSDT(parseFloat(credit.available))}</h2>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6 flex-wrap">
                 <div className="text-sm">
                   <span className="text-primary-foreground/70">Total Limit: </span>
                   <span className="font-medium">{formatUSDT(parseFloat(credit.limit))}</span>
@@ -95,29 +104,52 @@ export default function StudentDashboard() {
                   <span className="text-primary-foreground/70">Used: </span>
                   <span className="font-medium">{formatUSDT(parseFloat(credit.used))}</span>
                 </div>
+                <div className="text-sm">
+                  <span className="text-primary-foreground/70">Credit Score: </span>
+                  <span className="font-bold text-credora-emerald">{credit.score}</span>
+                  <span className="text-primary-foreground/60 ml-1">/ 900</span>
+                </div>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="hero" size="lg">
-                Use Credit
-              </Button>
-              <Button variant="hero-outline" size="lg" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
-                Pay Now
-              </Button>
+              <Link to="/student/slices">
+                <Button variant="hero" size="lg">
+                  Borrow Funds
+                </Button>
+              </Link>
+              <Link to="/student/slices">
+                <Button variant="hero-outline" size="lg" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
+                  Make Payment
+                </Button>
+              </Link>
             </div>
           </div>
           {/* Progress Bar */}
           <div className="mt-8">
+            <div className="flex justify-between text-xs text-primary-foreground/70 mb-2">
+              <span>Credit Utilization</span>
+              <span>{((parseFloat(credit.used) / parseFloat(credit.limit || '1')) * 100).toFixed(1)}%</span>
+            </div>
             <div className="h-3 bg-primary-foreground/20 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${(parseFloat(credit.used) / parseFloat(credit.limit)) * 100}%` }}
+                animate={{ width: `${Math.min((parseFloat(credit.used) / parseFloat(credit.limit || '1')) * 100, 100)}%` }}
                 transition={{ duration: 1, delay: 0.5 }}
-                className="h-full bg-credora-emerald rounded-full"
+                className={cn(
+                  "h-full rounded-full",
+                  (parseFloat(credit.used) / parseFloat(credit.limit || '1')) < 0.3 ? "bg-credora-emerald" :
+                  (parseFloat(credit.used) / parseFloat(credit.limit || '1')) < 0.7 ? "bg-credora-amber" : "bg-red-500"
+                )}
               />
             </div>
             <p className="text-xs text-primary-foreground/60 mt-2">
-              {((parseFloat(credit.used) / parseFloat(credit.limit)) * 100).toFixed(1)}% of credit limit utilized
+              {parseFloat(credit.limit) === 0 
+                ? "Complete your profile to get a credit limit"
+                : (parseFloat(credit.used) / parseFloat(credit.limit)) < 0.3 
+                ? "Excellent credit utilization" 
+                : (parseFloat(credit.used) / parseFloat(credit.limit)) < 0.7
+                ? "Good credit utilization"
+                : "High utilization - consider making a payment"}
             </p>
           </div>
         </motion.div>
@@ -125,29 +157,30 @@ export default function StudentDashboard() {
         {/* Stats Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            label="Reputation Score"
+            label="Credit Score"
             value={credit.score.toString()}
-            subValue="/ 900"
+            subValue={`Grade: ${credit.grade}`}
             icon={Award}
-            trend={{ value: 12, isPositive: true }}
+            trend={credit.score >= 700 ? { value: 12, isPositive: true } : undefined}
             variant="emerald"
           />
           <StatCard
             label="Outstanding Balance"
             value={formatUSDT(parseFloat(borrowing.totalBorrowed))}
+            subValue={parseFloat(borrowing.totalBorrowed) > 0 ? `Principal: ${formatUSDT(parseFloat(borrowing.principal))}` : 'No active loans'}
             icon={CreditCard}
             variant="amber"
           />
           <StatCard
-            label="Next Slice Due"
-            value={formatUSDT(parseFloat(borrowing.nextPaymentAmount))}
-            subValue={new Date(borrowing.nextPaymentDue).toLocaleDateString()}
+            label="Next Payment Due"
+            value={parseFloat(borrowing.nextPaymentAmount) > 0 ? formatUSDT(parseFloat(borrowing.nextPaymentAmount)) : 'N/A'}
+            subValue={parseFloat(borrowing.nextPaymentAmount) > 0 ? new Date(borrowing.nextPaymentDue).toLocaleDateString() : 'No pending payments'}
             icon={Clock}
             variant="blue"
           />
           <StatCard
             label="Interest Rate"
-            value={`${credit.interestRate}%`}
+            value={`${credit.interestRate.toFixed(1)}%`}
             subValue="per annum"
             icon={TrendingUp}
             variant="purple"
@@ -172,41 +205,49 @@ export default function StudentDashboard() {
               </Link>
             </div>
             <div className="space-y-4">
-              {recentTransactions.slice(0, 4).map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between py-3 border-b border-border last:border-0"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
+              {recentTransactions.length > 0 ? (
+                recentTransactions.slice(0, 4).map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center",
+                          tx.type === "borrow"
+                            ? "bg-credora-amber/10"
+                            : "bg-credora-emerald/10"
+                        )}
+                      >
+                        {tx.type === "borrow" ? (
+                          <ArrowUpRight className="w-5 h-5 text-credora-amber" />
+                        ) : (
+                          <ArrowDownRight className="w-5 h-5 text-credora-emerald" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{tx.type === "borrow" ? "Borrowed" : "Repaid"}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <p
                       className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center",
-                        tx.type === "borrow"
-                          ? "bg-credora-amber/10"
-                          : "bg-credora-emerald/10"
+                        "font-semibold",
+                        tx.type === "borrow" ? "text-credora-amber" : "text-credora-emerald"
                       )}
                     >
-                      {tx.type === "borrow" ? (
-                        <ArrowUpRight className="w-5 h-5 text-credora-amber" />
-                      ) : (
-                        <ArrowDownRight className="w-5 h-5 text-credora-emerald" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{tx.type === "borrow" ? "Borrowed" : "Repaid"}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()}</p>
-                    </div>
+                      {tx.type === "borrow" ? "+" : "-"}{formatUSDT(parseFloat(tx.amount))}
+                    </p>
                   </div>
-                  <p
-                    className={cn(
-                      "font-semibold",
-                      tx.type === "borrow" ? "text-credora-amber" : "text-credora-emerald"
-                    )}
-                  >
-                    {tx.type === "borrow" ? "+" : "-"}{formatUSDT(parseFloat(tx.amount))}
-                  </p>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <CreditCard className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground">No transactions yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Start borrowing to see your transaction history</p>
                 </div>
-              ))}
+              )}
             </div>
           </motion.div>
 

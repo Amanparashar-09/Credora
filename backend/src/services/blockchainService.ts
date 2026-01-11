@@ -7,24 +7,39 @@ import MockUSDTABI from '../abis/MockUSDT.json';
 
 const provider = new ethers.JsonRpcProvider(CONTRACT_CONFIG.RPC_URL);
 
-// Contract instances
-const creditRegistry = new ethers.Contract(
-  CONTRACT_CONFIG.CREDIT_REGISTRY,
-  CreditRegistryABI,
-  provider
-);
+// Lazy-loaded contract instances to prevent crashes on startup
+const getCreditRegistry = () => {
+  if (!CONTRACT_CONFIG.CREDIT_REGISTRY) {
+    throw new Error('CREDIT_REGISTRY_ADDRESS not configured');
+  }
+  return new ethers.Contract(
+    CONTRACT_CONFIG.CREDIT_REGISTRY,
+    CreditRegistryABI,
+    provider
+  );
+};
 
-const credoraPool = new ethers.Contract(
-  CONTRACT_CONFIG.CREDORA_POOL,
-  CredoraPoolABI,
-  provider
-);
+const getCredoraPool = () => {
+  if (!CONTRACT_CONFIG.CREDORA_POOL) {
+    throw new Error('CREDORA_POOL_ADDRESS not configured');
+  }
+  return new ethers.Contract(
+    CONTRACT_CONFIG.CREDORA_POOL,
+    CredoraPoolABI,
+    provider
+  );
+};
 
-const mockUSDT = new ethers.Contract(
-  CONTRACT_CONFIG.MOCK_USDT,
-  MockUSDTABI,
-  provider
-);
+const getMockUSDT = () => {
+  if (!CONTRACT_CONFIG.MOCK_USDT) {
+    throw new Error('MOCK_USDT_ADDRESS not configured');
+  }
+  return new ethers.Contract(
+    CONTRACT_CONFIG.MOCK_USDT,
+    MockUSDTABI,
+    provider
+  );
+};
 
 export const blockchainService = {
   /**
@@ -37,6 +52,7 @@ export const blockchainService = {
     nonce: number;
   }> {
     try {
+      const creditRegistry = getCreditRegistry();
       const [score, limit, validUntil, nonce] = await creditRegistry.getCreditLimit(studentAddress);
 
       return {
@@ -48,6 +64,20 @@ export const blockchainService = {
     } catch (error: any) {
       logger.error('Failed to get credit limit:', error.message);
       throw new Error('Blockchain read failed');
+    }
+  },
+
+  /**
+   * Get current on-chain nonce for a user from CreditRegistry
+   */
+  async getCurrentNonce(userAddress: string): Promise<number> {
+    try {
+      const creditRegistry = getCreditRegistry();
+      const nonce = await creditRegistry.currentNonce(userAddress);
+      return Number(nonce);
+    } catch (error: any) {
+      logger.error('Failed to get current nonce:', error.message);
+      throw new Error('Failed to fetch on-chain nonce');
     }
   },
 
@@ -65,6 +95,7 @@ export const blockchainService = {
       logger.info(`Fetching pool stats from: ${CONTRACT_CONFIG.CREDORA_POOL}`);
       logger.info(`RPC URL: ${CONTRACT_CONFIG.RPC_URL}`);
       
+      const credoraPool = getCredoraPool();
       const [liquidity, borrowed, shares] = await Promise.all([
         credoraPool.totalLiquidity(),
         credoraPool.totalBorrowed(),
@@ -119,6 +150,7 @@ export const blockchainService = {
     isDefaulted: boolean;
   }> {
     try {
+      const credoraPool = getCredoraPool();
       const [principal, debt, dueAt] = await credoraPool.getBorrowerDebt(borrowerAddress);
 
       const dueDate = Number(dueAt) > 0 ? new Date(Number(dueAt) * 1000) : null;
@@ -155,6 +187,7 @@ export const blockchainService = {
       logger.info(`Pool contract address: ${CONTRACT_CONFIG.CREDORA_POOL}`);
       logger.info(`RPC URL: ${CONTRACT_CONFIG.RPC_URL}`);
       
+      const credoraPool = getCredoraPool();
       const shares = await credoraPool.balanceOf(investorAddress);
       const withdrawable = await credoraPool.previewWithdraw(shares);
 
@@ -182,6 +215,7 @@ export const blockchainService = {
    */
   async getUSDTBalance(address: string): Promise<string> {
     try {
+      const mockUSDT = getMockUSDT();
       const balance = await mockUSDT.balanceOf(address);
       return ethers.formatUnits(balance, 18);
     } catch (error: any) {
@@ -195,6 +229,7 @@ export const blockchainService = {
    * Listen to contract events
    */
   setupEventListeners() {
+    const credoraPool = getCredoraPool();
     // Listen to Borrow events
     credoraPool.on('Borrowed', (borrower, amount, dueAt, event) => {
       logger.info('Borrow event detected', {
@@ -235,6 +270,42 @@ export const blockchainService = {
     });
 
     logger.info('Event listeners setup complete');
+  },
+
+  /**
+   * Update credit limit on-chain in CreditRegistry
+   */
+  async updateCreditLimit(
+    userAddress: string,
+    score: number,
+    creditLimit: string,
+    expiry: number,
+    nonce: number,
+    signature: string
+  ): Promise<string> {
+    try {
+      // This is a read-only provider, so we can't send transactions
+      // In production, this should be called by an admin wallet with gas
+      // For now, we'll return a placeholder
+      logger.info('Credit limit update requested (requires admin tx)', {
+        userAddress,
+        score,
+        creditLimit,
+        expiry,
+        nonce,
+      });
+
+      // NOTE: To actually update on-chain, you need:
+      // 1. An admin wallet with ETH for gas
+      // 2. Create a signer from the admin private key
+      // 3. Call creditRegistry.updateLimit(limitUpdate, signature)
+      
+      // Placeholder for now - in production this would be the actual tx hash
+      return '0x' + '0'.repeat(64);
+    } catch (error: any) {
+      logger.error('Failed to update credit limit on-chain:', error.message);
+      throw error;
+    }
   },
 
   /**

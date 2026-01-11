@@ -176,7 +176,7 @@ export default function InvestorDashboard() {
                 const percentage = (parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100;
                 return (
                   <motion.div
-                    key={pool.poolAddress}
+                    key={`${pool.poolAddress}-${index}`}
                     initial={{ width: 0 }}
                     animate={{ width: `${percentage}%` }}
                     transition={{ duration: 0.8, delay: 0.3 + index * 0.1 }}
@@ -195,7 +195,7 @@ export default function InvestorDashboard() {
                 const percentage = ((parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100).toFixed(1);
                 const colorClass = ["emerald", "blue", "amber", "purple"][index % 4];
                 return (
-                  <div key={pool.poolAddress} className="flex items-center justify-between">
+                  <div key={`pool-${pool.poolAddress}-${index}`} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={`w-3 h-3 rounded-full bg-credora-${colorClass}`} />
                       <span className="text-sm">{pool.poolName}</span>

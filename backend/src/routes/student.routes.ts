@@ -47,12 +47,16 @@ router.get('/documents/:id', apiLimiter, studentController.getDocument);
 
 // Credit scoring
 router.post('/submit-for-scoring', apiLimiter, studentController.submitForScoring);
+router.get('/attestation-data', apiLimiter, studentController.getAttestationData);
 router.get('/credit-status', apiLimiter, studentController.getCreditStatus);
 router.get('/credit-history', apiLimiter, studentController.getCreditHistory);
 
 // Borrowing
 router.get('/borrowing-status', apiLimiter, studentController.getBorrowingStatus);
 router.get('/borrowing-history', apiLimiter, studentController.getBorrowingHistory);
+router.post('/borrow', apiLimiter, studentController.borrowFunds);
+router.post('/repay', apiLimiter, studentController.repayLoan);
+router.post('/pay-slice', apiLimiter, studentController.paySlice);
 
 // Dashboard stats
 router.get('/dashboard', apiLimiter, studentController.getDashboard);

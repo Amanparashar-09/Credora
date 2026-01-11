@@ -17,6 +17,7 @@ import authRoutes from './routes/auth.routes';
 import studentRoutes from './routes/student.routes';
 import investorRoutes from './routes/investor.routes';
 import healthRoutes from './routes/health.routes';
+import studentProfileRoutes from './routes/studentProfile.routes';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -54,6 +55,7 @@ app.use('/api/health', healthRoutes);
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/student`, studentRoutes);
 app.use(`/api/${API_VERSION}/investor`, investorRoutes);
+app.use(`/api/${API_VERSION}/student-profile`, studentProfileRoutes);
 
 // Root endpoint
 app.get('/', (_req, res) => {

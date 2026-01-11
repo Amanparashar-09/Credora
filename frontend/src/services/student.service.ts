@@ -104,6 +104,31 @@ class StudentService {
   }
 
   /**
+   * Get attestation data for on-chain registration
+   */
+  async getAttestationData(): Promise<{
+    user: string;
+    score: number;
+    creditLimit: string;
+    expiry: number;
+    nonce: number;
+    signature: string;
+  }> {
+    const response = await api.get<ApiResponse<{
+      user: string;
+      score: number;
+      creditLimit: string;
+      expiry: number;
+      nonce: number;
+      signature: string;
+    }>>('/student/attestation-data');
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error('Failed to get attestation data');
+  }
+
+  /**
    * Get credit status
    */
   async getCreditStatus(): Promise<CreditStatus> {
@@ -156,6 +181,39 @@ class StudentService {
       return response.data.data;
     }
     throw new Error('Failed to fetch dashboard');
+  }
+
+  /**
+   * Borrow funds from the pool
+   */
+  async borrowFunds(amount: number): Promise<{ message: string; contractAddress: string; method: string; params: unknown[] }> {
+    const response = await api.post<ApiResponse<{ message: string; contractAddress: string; method: string; params: unknown[] }>>('/student/borrow', { amount });
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error('Failed to process borrow request');
+  }
+
+  /**
+   * Repay loan
+   */
+  async repayLoan(amount: number): Promise<{ message: string; contractAddress: string; method: string; params: unknown[] }> {
+    const response = await api.post<ApiResponse<{ message: string; contractAddress: string; method: string; params: unknown[] }>>('/student/repay', { amount });
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error('Failed to process repayment');
+  }
+
+  /**
+   * Pay individual slice (EMI installment)
+   */
+  async paySlice(sliceId: string, amount: number): Promise<{ message: string; contractAddress: string; method: string; params: unknown[] }> {
+    const response = await api.post<ApiResponse<{ message: string; contractAddress: string; method: string; params: unknown[] }>>('/student/pay-slice', { sliceId, amount });
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error('Failed to process slice payment');
   }
 }
 

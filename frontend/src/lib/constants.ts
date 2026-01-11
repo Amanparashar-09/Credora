@@ -28,20 +28,51 @@ export const STORAGE_KEYS = {
   USER_ROLE: 'credora_user_role',
 };
 
-// Contract ABIs (simplified - for reads only)
+// Contract ABIs
 export const CREDIT_REGISTRY_ABI = [
-  'function getCreditLimit(address) view returns (uint256 score, uint256 limit, uint256 validUntil, uint256 nonce)',
-  'function isValid(address) view returns (bool)',
+  'function isValid(address user) view returns (bool)',
+  'function getCreditLimit(address user) view returns (uint256 limit, uint256 expiry)',
+  'function limitOf(address user) view returns (uint256)',
+  'function scoreOf(address user) view returns (uint256)',
+  'function expiryOf(address user) view returns (uint256)',
 ];
 
 export const CREDORA_POOL_ABI = [
+  // View functions
   'function totalLiquidity() view returns (uint256)',
   'function totalBorrowed() view returns (uint256)',
   'function totalShares() view returns (uint256)',
-  'function getBorrowerDebt(address) view returns (uint256 principal, uint256 interest, uint256 shares)',
+  'function getBorrowerDebt(address) view returns (uint256 principal, uint256 debt, uint256 dueAtTimestamp)',
+  'function balanceOf(address) view returns (uint256)',
+  'function previewWithdraw(uint256 shares) view returns (uint256)',
+  'function userTotalDebt(address) view returns (uint256)',
+  'function availableCredit(address) view returns (uint256)',
+  
+  // Write functions
+  'function borrow(uint256 amount) external',
+  'function repay(uint256 amount) external',
+  'function deposit(uint256 amount) external',
+  'function withdraw(uint256 shares) external',
+  
+  // Events
+  'event Borrowed(address indexed user, uint256 amount, uint256 newPrincipal, uint256 dueAt)',
+  'event Repaid(address indexed user, uint256 amount, uint256 principalPaid, uint256 interestPaid, uint256 reserveCut)',
+  'event Deposited(address indexed user, uint256 amount, uint256 shares)',
+  'event Withdrawn(address indexed user, uint256 amount, uint256 shares)',
 ];
 
 export const MOCK_USDT_ABI = [
+  // View functions
   'function balanceOf(address) view returns (uint256)',
-  'function allowance(address, address) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  
+  // Write functions
+  'function approve(address spender, uint256 amount) external returns (bool)',
+  'function transfer(address to, uint256 amount) external returns (bool)',
+  'function transferFrom(address from, address to, uint256 amount) external returns (bool)',
+  'function mint(address to, uint256 amount) external',
+  
+  // Events
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'event Approval(address indexed owner, address indexed spender, uint256 value)',
 ];

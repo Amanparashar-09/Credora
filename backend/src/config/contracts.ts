@@ -22,19 +22,19 @@ export const CONTRACT_CONFIG = {
 
 // EIP-712 Domain for CreditRegistry
 export const EIP712_DOMAIN = {
-  name: 'CredoraRegistry',
+  name: 'CredoraCreditRegistry',
   version: '1',
   chainId: CONTRACT_CONFIG.CHAIN_ID,
   verifyingContract: CONTRACT_CONFIG.CREDIT_REGISTRY,
 };
 
-// EIP-712 Types for Limit struct
+// EIP-712 Types for LimitUpdate struct
 export const EIP712_TYPES = {
-  Limit: [
-    { name: 'holder', type: 'address' },
-    { name: 'score', type: 'uint16' },
-    { name: 'limit', type: 'uint256' },
-    { name: 'validUntil', type: 'uint40' },
+  LimitUpdate: [
+    { name: 'user', type: 'address' },
+    { name: 'score', type: 'uint256' },
+    { name: 'creditLimit', type: 'uint256' },
+    { name: 'expiry', type: 'uint256' },
     { name: 'nonce', type: 'uint256' },
   ],
 };

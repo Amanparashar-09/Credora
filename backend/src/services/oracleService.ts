@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { CONTRACT_CONFIG, EIP712_DOMAIN, EIP712_TYPES } from '../config/contracts';
 import { CreditHistory } from '../models/CreditHistory';
 import { Student } from '../models/Student';
+import { blockchainService } from './blockchainService';
 
 // Lazy initialization to ensure env vars are loaded
 let _provider: ethers.JsonRpcProvider | null = null;
@@ -26,10 +27,10 @@ function getAttesterWallet(): ethers.Wallet {
 }
 
 export interface CreditAttestation {
-  holder: string;
+  user: string;
   score: number;
-  limit: bigint;
-  validUntil: number;
+  creditLimit: bigint;
+  expiry: number;
   nonce: number;
 }
 
@@ -40,17 +41,17 @@ export const oracleService = {
   async signCreditUpdate(attestation: CreditAttestation): Promise<string> {
     try {
       logger.info('Signing credit attestation', {
-        holder: attestation.holder,
+        user: attestation.user,
         score: attestation.score,
-        limit: attestation.limit.toString(),
+        creditLimit: attestation.creditLimit.toString(),
       });
 
       // Create the typed data message
       const message = {
-        holder: attestation.holder,
+        user: attestation.user,
         score: attestation.score,
-        limit: attestation.limit,
-        validUntil: attestation.validUntil,
+        creditLimit: attestation.creditLimit,
+        expiry: attestation.expiry,
         nonce: attestation.nonce,
       };
 
@@ -85,22 +86,25 @@ export const oracleService = {
   }> {
     try {
       // Normalize address
-      const holder = studentAddress.toLowerCase();
+      const user = studentAddress.toLowerCase();
 
       // Get student's current nonce
-      const student = await Student.findOne({ walletAddress: holder });
+      const student = await Student.findOne({ walletAddress: user });
       if (!student) {
         throw new Error('Student not found');
       }
 
+      // Get current on-chain nonce from CreditRegistry contract
+      const onChainNonce = await blockchainService.getCurrentNonce(user);
+
       // Create attestation
-      const validUntil = Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60); // 90 days
+      const expiry = Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60); // 90 days
       const attestation: CreditAttestation = {
-        holder,
+        user,
         score,
-        limit: ethers.parseUnits(limitInUsdt.toString(), 18), // Convert to 18 decimals
-        validUntil,
-        nonce: student.nonce,
+        creditLimit: ethers.parseUnits(limitInUsdt.toString(), 18), // Convert to 18 decimals
+        expiry,
+        nonce: onChainNonce, // Use on-chain nonce, not database nonce
       };
 
       // Sign attestation
@@ -108,10 +112,10 @@ export const oracleService = {
 
       // Store in credit history
       await CreditHistory.create({
-        studentAddress: holder,
+        studentAddress: user,
         score,
-        limit: attestation.limit.toString(),
-        validUntil: new Date(validUntil * 1000),
+        limit: attestation.creditLimit.toString(),
+        validUntil: new Date(expiry * 1000),
         nonce: attestation.nonce,
         signature,
         signedBy: getAttesterWallet().address.toLowerCase(),
@@ -122,14 +126,14 @@ export const oracleService = {
 
       // Update student record
       student.creditScore = score;
-      student.creditLimit = attestation.limit.toString();
-      student.creditExpiry = new Date(validUntil * 1000);
+      student.creditLimit = attestation.creditLimit.toString();
+      student.creditExpiry = new Date(expiry * 1000);
       student.lastScoreUpdate = new Date();
-      student.nonce += 1; // Increment nonce for next update
+      student.nonce = (student.nonce || 0) + 1; // Increment nonce for next update
       await student.save();
 
       logger.info('Credit attestation created and stored', {
-        holder,
+        user,
         score,
         nonce: attestation.nonce,
       });
@@ -147,10 +151,10 @@ export const oracleService = {
   verifySignature(attestation: CreditAttestation, signature: string): boolean {
     try {
       const message = {
-        holder: attestation.holder,
+        user: attestation.user,
         score: attestation.score,
-        limit: attestation.limit,
-        validUntil: attestation.validUntil,
+        creditLimit: attestation.creditLimit,
+        expiry: attestation.expiry,
         nonce: attestation.nonce,
       };
 

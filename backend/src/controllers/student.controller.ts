@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { Student } from '../models/Student';
+import { StudentProfile } from '../models/StudentProfile';
 import { Document } from '../models/Document';
 import { CreditHistory } from '../models/CreditHistory';
 import { ValidationError, NotFoundError } from '../utils/errors';
@@ -253,6 +254,12 @@ export const studentController = {
         scoreResult.credit_limit
       );
 
+      // Update student record
+      student.creditScore = scoreResult.credora_score;
+      student.creditLimit = scoreResult.credit_limit.toString();
+      student.creditExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year
+      await student.save();
+
       logger.info('Credit scoring completed', {
         studentAddress: req.user!.address,
         score: scoreResult.credora_score,
@@ -261,13 +268,52 @@ export const studentController = {
 
       res.json({
         success: true,
-        message: 'Credit scoring completed successfully',
+        message: 'Credit scoring completed successfully. You need to register this on-chain before borrowing.',
         data: {
           score: scoreResult.credora_score,
           limit: scoreResult.credit_limit,
           riskLevel: scoreResult.risk_level,
           attestation,
           signature,
+          needsOnChainRegistration: true,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Get attestation data for on-chain registration
+   */
+  async getAttestationData(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const student = await Student.findOne({ walletAddress: req.user!.address });
+      
+      if (!student) {
+        throw new NotFoundError('Student profile not found');
+      }
+
+      if (!student.creditScore || !student.creditLimit) {
+        throw new ValidationError('Please complete credit scoring first');
+      }
+
+      // Create fresh attestation (this fetches on-chain nonce internally)
+      const { attestation, signature } = await oracleService.createCreditAttestation(
+        req.user!.address,
+        student.creditScore,
+        parseFloat(student.creditLimit)
+      );
+
+      res.json({
+        success: true,
+        data: {
+          user: attestation.user,
+          score: attestation.score,
+          creditLimit: attestation.creditLimit.toString(),
+          expiry: attestation.expiry,
+          nonce: attestation.nonce,
+          signature: signature,
         },
       });
     } catch (error) {
@@ -377,38 +423,214 @@ export const studentController = {
   },
 
   /**
+   * Borrow funds from the pool
+   */
+  async borrowFunds(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { amount } = req.body;
+
+      if (!amount || amount <= 0) {
+        throw new ValidationError('Invalid borrow amount');
+      }
+
+      const student = await Student.findOne({ walletAddress: req.user!.address });
+      if (!student) {
+        throw new NotFoundError('Student not found');
+      }
+
+      // Note: This is a demo endpoint. In production:
+      // 1. User would call smart contract directly from frontend
+      // 2. Backend would listen to blockchain events
+      // 3. Update database when Borrowed event is emitted
+      
+      res.json({
+        success: true,
+        data: {
+          message: 'Borrow request processed. Connect wallet to complete transaction.',
+          amount,
+          contractAddress: process.env.CREDORA_POOL_ADDRESS,
+          method: 'borrow',
+          params: [amount],
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Repay loan
+   */
+  async repayLoan(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { amount } = req.body;
+
+      if (!amount || amount <= 0) {
+        throw new ValidationError('Invalid repayment amount');
+      }
+
+      const student = await Student.findOne({ walletAddress: req.user!.address });
+      if (!student) {
+        throw new NotFoundError('Student not found');
+      }
+
+      // Note: This is a demo endpoint. In production:
+      // 1. User would call smart contract directly from frontend
+      // 2. Backend would listen to blockchain events
+      // 3. Update database when Repaid event is emitted
+      
+      res.json({
+        success: true,
+        data: {
+          message: 'Repayment request processed. Connect wallet to complete transaction.',
+          amount,
+          contractAddress: process.env.CREDORA_POOL_ADDRESS,
+          method: 'repay',
+          params: [amount],
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Pay individual slice (EMI installment)
+   */
+  async paySlice(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { sliceId, amount } = req.body;
+
+      if (!sliceId || !amount || amount <= 0) {
+        throw new ValidationError('Invalid slice payment data');
+      }
+
+      const student = await Student.findOne({ walletAddress: req.user!.address });
+      if (!student) {
+        throw new NotFoundError('Student not found');
+      }
+
+      // Note: This is a demo endpoint. In production:
+      // 1. User would call smart contract repay() function
+      // 2. Pass the slice amount as parameter
+      // 3. Backend listens to Repaid event
+      // 4. Update slice status in database
+      
+      res.json({
+        success: true,
+        data: {
+          message: 'Slice payment processed. Connect wallet to complete transaction.',
+          sliceId,
+          amount,
+          contractAddress: process.env.CREDORA_POOL_ADDRESS,
+          method: 'repay',
+          params: [amount],
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
    * Get dashboard data
    */
   async getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const [student, documents, debtInfo] = await Promise.all([
+      const [student, studentProfile, debtInfo] = await Promise.all([
         Student.findOne({ walletAddress: req.user!.address }),
-        Document.countDocuments({ studentAddress: req.user!.address }),
+        StudentProfile.findOne({ walletAddress: req.user!.address }),
         blockchainService.getBorrowerDebt(req.user!.address),
       ]);
+
+      if (!student) {
+        throw new NotFoundError('Student not found');
+      }
+
+      // Use StudentProfile data if available, otherwise use Student data
+      const creditScore = studentProfile?.creditScore || student.creditScore || 0;
+      const creditLimit = studentProfile?.maxBorrowingLimit || parseFloat(student.creditLimit || '0');
+      const currentBorrowed = studentProfile?.currentBorrowed || parseFloat(debtInfo.debt || '0');
+      const availableCredit = Math.max(0, creditLimit - currentBorrowed);
+
+      // Get interest rate from studentProfile
+      const interestRate = studentProfile?.interestRate || 12;
+
+      // Calculate next payment details
+      const nextPaymentAmount = currentBorrowed > 0 ? (currentBorrowed / 10).toFixed(2) : '0';
+      const nextPaymentDue = debtInfo.dueAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Get recent credit history for transactions
+      const creditHistory = await CreditHistory.find({ studentAddress: req.user!.address })
+        .sort({ createdAt: -1 })
+        .limit(5);
 
       res.json({
         success: true,
         data: {
           profile: {
-            name: student?.name,
-            university: student?.university,
-            onboardingCompleted: student?.onboardingCompleted,
+            walletAddress: student.walletAddress,
+            name: student.name,
+            email: student.email,
+            university: student.university,
+            major: student.major,
+            gpa: studentProfile?.gpa,
+            graduationYear: student.graduationYear,
+            githubUsername: studentProfile?.githubUsername,
+            isOnboarded: student.onboardingCompleted,
+            createdAt: student.createdAt,
+            updatedAt: student.lastActive,
           },
           credit: {
-            score: student?.creditScore,
-            limit: student?.creditLimit,
-            expiry: student?.creditExpiry,
+            score: creditScore,
+            limit: creditLimit.toFixed(2),
+            available: availableCredit.toFixed(2),
+            used: currentBorrowed.toFixed(2),
+            validUntil: student.creditExpiry || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            interestRate: interestRate,
+            grade: creditScore >= 750 ? 'A+' : creditScore >= 650 ? 'A' : creditScore >= 550 ? 'B' : 'C',
           },
           borrowing: {
-            currentDebt: debtInfo.debt,
-            dueAt: debtInfo.dueAt,
-            isDefaulted: debtInfo.isDefaulted,
+            totalBorrowed: currentBorrowed.toFixed(2),
+            principal: currentBorrowed.toFixed(2),
+            interest: (currentBorrowed * (interestRate / 100)).toFixed(2),
+            nextPaymentDue: nextPaymentDue,
+            nextPaymentAmount: nextPaymentAmount,
           },
-          documents: {
-            uploaded: documents,
-            submitted: student?.documentsSubmitted,
-          },
+          recentTransactions: creditHistory.map(tx => ({
+            id: tx._id.toString(),
+            type: 'borrow' as const,
+            amount: tx.limit,
+            timestamp: tx.createdAt,
+            txHash: tx.signature,
+            status: 'completed' as const,
+          })),
+          badges: [
+            {
+              name: 'First Borrow',
+              icon: '🎯',
+              earned: currentBorrowed > 0,
+              earnedAt: currentBorrowed > 0 ? student.createdAt : undefined,
+            },
+            {
+              name: 'High Score',
+              icon: '⭐',
+              earned: creditScore >= 700,
+              earnedAt: creditScore >= 700 ? student.lastActive : undefined,
+            },
+            {
+              name: 'Profile Complete',
+              icon: '✅',
+              earned: student.onboardingCompleted && !!studentProfile,
+              earnedAt: student.onboardingCompleted ? student.createdAt : undefined,
+            },
+            {
+              name: 'Good Standing',
+              icon: '🏆',
+              earned: !debtInfo.isDefaulted && currentBorrowed > 0,
+              earnedAt: !debtInfo.isDefaulted && currentBorrowed > 0 ? student.lastActive : undefined,
+            },
+          ],
         },
       });
     } catch (error) {

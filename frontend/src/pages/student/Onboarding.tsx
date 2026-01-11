@@ -72,15 +72,22 @@ export default function StudentOnboarding() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
-      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      if (!validTypes.includes(file.type)) {
-        alert('Please upload a PDF or DOC file');
+      // Validate file type - PDF only for AI processing
+      if (file.type !== 'application/pdf') {
+        toast({
+          title: "Invalid File Type",
+          description: "Please upload a PDF file only",
+          variant: "destructive",
+        });
         return;
       }
       // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert('File size must be less than 5MB');
+        toast({
+          title: "File Too Large",
+          description: "File size must be less than 5MB",
+          variant: "destructive",
+        });
         return;
       }
       setFormData({ ...formData, resume: file });
@@ -91,14 +98,21 @@ export default function StudentOnboarding() {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      // Validate and set file
-      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      if (!validTypes.includes(file.type)) {
-        alert('Please upload a PDF or DOC file');
+      // Validate and set file - PDF only for AI processing
+      if (file.type !== 'application/pdf') {
+        toast({
+          title: "Invalid File Type",
+          description: "Please upload a PDF file only",
+          variant: "destructive",
+        });
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert('File size must be less than 5MB');
+        toast({
+          title: "File Too Large",
+          description: "File size must be less than 5MB",
+          variant: "destructive",
+        });
         return;
       }
       setFormData({ ...formData, resume: file });
@@ -156,40 +170,68 @@ export default function StudentOnboarding() {
     try {
       setIsSubmitting(true);
       
-      // Prepare onboarding data - make fields optional if not filled
-      const onboardingData: Partial<OnboardingData> = {
-        name: formData.collegeName, // Using collegeName as temporary name
-        email: "", // Will need to add email field or make it optional
-        university: formData.collegeName,
-        major: formData.branch,
-        gpa: parseFloat(formData.cgpa) || 0,
-        graduationYear: parseInt(formData.graduationYear) || new Date().getFullYear(),
-        githubUsername: formData.githubUsername || undefined,
-      };
-
-      // Submit onboarding data
-      await studentService.completeOnboarding(onboardingData as OnboardingData);
-
-      // Upload resume if provided
-      if (formData.resume) {
-        await studentService.uploadDocument(formData.resume, 'resume');
+      // Validate required fields
+      if (!formData.githubUsername || !formData.cgpa || !formData.numberOfInternships.toString() || !formData.resume) {
+        toast({
+          title: "Missing Required Fields",
+          description: "Please fill in GitHub username, GPA, internships count, and upload your resume",
+          variant: "destructive",
+        });
+        return;
       }
 
-      // Trigger AI scoring
-      await studentService.submitForScoring();
+      // Validate GPA range (0-10)
+      const gpa = parseFloat(formData.cgpa);
+      if (isNaN(gpa) || gpa < 0 || gpa > 10) {
+        toast({
+          title: "Invalid GPA",
+          description: "GPA must be between 0 and 10",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Import student profile service
+      const { submitProfile } = await import('@/services/studentProfile.service');
+
+      // Prepare profile data for AI scoring
+      const profileData = {
+        githubUsername: formData.githubUsername,
+        gpa: gpa,
+        internships: formData.numberOfInternships,
+        resume: formData.resume,
+      };
+
+      // Submit to AI engine for credit scoring
+      const profile = await submitProfile(profileData);
+
+      // Also submit standard onboarding data if fields are filled
+      if (formData.collegeName && formData.branch) {
+        const onboardingData: Partial<OnboardingData> = {
+          name: formData.collegeName,
+          email: "",
+          university: formData.collegeName,
+          major: formData.branch,
+          gpa: gpa,
+          graduationYear: parseInt(formData.graduationYear) || new Date().getFullYear(),
+          githubUsername: formData.githubUsername,
+        };
+        await studentService.completeOnboarding(onboardingData as OnboardingData);
+      }
 
       toast({
         title: "Success!",
-        description: "Your profile has been created and submitted for credit scoring. You'll be notified when your score is ready.",
+        description: `Your credit score is ${profile.creditScore}. Your buying power is $${parseFloat(profile.availableCredit).toLocaleString()}`,
       });
 
-      // Redirect to dashboard
-      navigate("/student");
-    } catch (err: any) {
+      // Redirect to credit details page
+      navigate("/student/credit");
+    } catch (err) {
+      const error = err as Error;
       console.error("Onboarding failed:", err);
       toast({
         title: "Error",
-        description: err.message || "Failed to complete onboarding",
+        description: error.message || "Failed to complete onboarding",
         variant: "destructive",
       });
     } finally {
@@ -647,8 +689,4 @@ export default function StudentOnboarding() {
       </div>
     </StudentLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }
