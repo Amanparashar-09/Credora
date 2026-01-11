@@ -1,0 +1,14 @@
+// filepath: e:\Projects\Credora\Credora\AI_Score_Engine\.dockerignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.pytest_cache/
+.mypy_cache/
+.git
+.gitignore
+.env
+.vscode/
+tests/
+test_*.py

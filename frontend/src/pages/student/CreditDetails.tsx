@@ -14,6 +14,7 @@ import studentService from "@/services/student.service";
 import { formatUSDT } from "@/utils/currency";
 import type { CreditStatus } from "@/types/api.types";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export default function CreditDetails() {
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
@@ -81,6 +82,34 @@ export default function CreditDetails() {
       </StudentLayout>
     );
   }
+
+  // Generate credit factors based on score (mock data until backend provides it)
+  const creditFactors = [
+    {
+      factor: "Academic Performance",
+      score: Math.min(100, Math.floor(creditStatus.score * 1.2)),
+      impact: "High" as const,
+      description: "Based on your CGPA and university reputation",
+    },
+    {
+      factor: "GitHub Activity",
+      score: Math.min(100, Math.floor(creditStatus.score * 0.9)),
+      impact: "High" as const,
+      description: "Quality and consistency of code contributions",
+    },
+    {
+      factor: "Professional Experience",
+      score: Math.min(100, Math.floor(creditStatus.score * 0.8)),
+      impact: "Medium" as const,
+      description: "Internships, projects, and certifications",
+    },
+    {
+      factor: "Payment History",
+      score: creditStatus.score >= 70 ? 100 : 0,
+      impact: "High" as const,
+      description: "Track record of on-time payments",
+    },
+  ];
 
   return (
     <StudentLayout>
@@ -250,8 +279,4 @@ export default function CreditDetails() {
       </div>
     </StudentLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }

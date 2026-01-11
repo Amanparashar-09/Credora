@@ -67,11 +67,11 @@ export default function StudentDashboard() {
   }
 
   const { 
-    credit = { available: '0', limit: '0', used: '0', score: 500, expiry: null }, 
-    borrowing = { totalBorrowed: '0', activeLoans: 0, nextPayment: null }, 
+    credit, 
+    borrowing, 
     recentTransactions = [], 
     badges = [] 
-  } = dashboardData || {};
+  } = dashboardData;
 
   return (
     <StudentLayout>
@@ -111,13 +111,13 @@ export default function StudentDashboard() {
             <div className="h-3 bg-primary-foreground/20 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: "30%" }}
+                animate={{ width: `${(parseFloat(credit.used) / parseFloat(credit.limit)) * 100}%` }}
                 transition={{ duration: 1, delay: 0.5 }}
                 className="h-full bg-credora-emerald rounded-full"
               />
             </div>
             <p className="text-xs text-primary-foreground/60 mt-2">
-              30% of credit limit utilized
+              {((parseFloat(credit.used) / parseFloat(credit.limit)) * 100).toFixed(1)}% of credit limit utilized
             </p>
           </div>
         </motion.div>
