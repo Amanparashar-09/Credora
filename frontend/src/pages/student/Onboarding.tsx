@@ -12,8 +12,14 @@ import {
   ChevronLeft,
   Upload,
   X,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import studentService from "@/services/student.service";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
+import type { OnboardingData } from "@/types/api.types";
 
 const steps = [
   { id: 1, title: "Academic Details", icon: GraduationCap },
@@ -24,6 +30,9 @@ const steps = [
 
 export default function StudentOnboarding() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     // Academic
     collegeName: "",
@@ -31,13 +40,21 @@ export default function StudentOnboarding() {
     branch: "",
     graduationYear: "",
     cgpa: "",
+    semester: "",
     // GitHub
     githubUsername: "",
+    repositoriesCount: "",
+    contributionsCount: "",
     // Work
-    internships: [] as { company: string; role: string; duration: string }[],
+    numberOfInternships: 0,
     // Documents
     resume: null as File | null,
+    // Additional
+    skills: [] as string[],
+    certifications: [] as string[],
   });
+  const [currentSkill, setCurrentSkill] = useState("");
+  const [currentCertification, setCurrentCertification] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleNext = () => {
@@ -96,6 +113,87 @@ export default function StudentOnboarding() {
     setFormData({ ...formData, resume: null });
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAddSkill = () => {
+    if (currentSkill.trim() && !formData.skills.includes(currentSkill.trim())) {
+      setFormData({ ...formData, skills: [...formData.skills, currentSkill.trim()] });
+      setCurrentSkill("");
+    }
+  };
+
+  const handleRemoveSkill = (skill: string) => {
+    setFormData({ ...formData, skills: formData.skills.filter(s => s !== skill) });
+  };
+
+  const handleAddCertification = () => {
+    if (currentCertification.trim() && !formData.certifications.includes(currentCertification.trim())) {
+      setFormData({ ...formData, certifications: [...formData.certifications, currentCertification.trim()] });
+      setCurrentCertification("");
+    }
+  };
+
+  const handleRemoveCertification = (cert: string) => {
+    setFormData({ ...formData, certifications: formData.certifications.filter(c => c !== cert) });
+  };
+
+  const incrementInternships = () => {
+    setFormData({ ...formData, numberOfInternships: formData.numberOfInternships + 1 });
+  };
+
+  const decrementInternships = () => {
+    if (formData.numberOfInternships > 0) {
+      setFormData({ ...formData, numberOfInternships: formData.numberOfInternships - 1 });
+    }
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+  };
+
+  const handleCompleteOnboarding = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // Prepare onboarding data - make fields optional if not filled
+      const onboardingData: Partial<OnboardingData> = {
+        name: formData.collegeName, // Using collegeName as temporary name
+        email: "", // Will need to add email field or make it optional
+        university: formData.collegeName,
+        major: formData.branch,
+        gpa: parseFloat(formData.cgpa) || 0,
+        graduationYear: parseInt(formData.graduationYear) || new Date().getFullYear(),
+        githubUsername: formData.githubUsername || undefined,
+      };
+
+      // Submit onboarding data
+      await studentService.completeOnboarding(onboardingData as OnboardingData);
+
+      // Upload resume if provided
+      if (formData.resume) {
+        await studentService.uploadDocument(formData.resume, 'resume');
+      }
+
+      // Trigger AI scoring
+      await studentService.submitForScoring();
+
+      toast({
+        title: "Success!",
+        description: "Your profile has been created and submitted for credit scoring. You'll be notified when your score is ready.",
+      });
+
+      // Redirect to dashboard
+      navigate("/student");
+    } catch (err: any) {
+      console.error("Onboarding failed:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to complete onboarding",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -168,9 +266,7 @@ export default function StudentOnboarding() {
                     className="credora-input w-full rounded-xl"
                     placeholder="e.g., IIT Delhi"
                     value={formData.collegeName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, collegeName: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('collegeName', e.target.value)}
                   />
                 </div>
                 <div>
@@ -180,9 +276,7 @@ export default function StudentOnboarding() {
                     className="credora-input w-full rounded-xl"
                     placeholder="e.g., B.Tech"
                     value={formData.degree}
-                    onChange={(e) =>
-                      setFormData({ ...formData, degree: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('degree', e.target.value)}
                   />
                 </div>
                 <div>
@@ -194,9 +288,7 @@ export default function StudentOnboarding() {
                     className="credora-input w-full rounded-xl"
                     placeholder="e.g., Computer Science"
                     value={formData.branch}
-                    onChange={(e) =>
-                      setFormData({ ...formData, branch: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('branch', e.target.value)}
                   />
                 </div>
                 <div>
@@ -208,12 +300,10 @@ export default function StudentOnboarding() {
                     className="credora-input w-full rounded-xl"
                     placeholder="e.g., 2025"
                     value={formData.graduationYear}
-                    onChange={(e) =>
-                      setFormData({ ...formData, graduationYear: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('graduationYear', e.target.value)}
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div>
                   <label className="block text-sm font-medium mb-2">
                     Current CGPA
                   </label>
@@ -222,11 +312,64 @@ export default function StudentOnboarding() {
                     className="credora-input w-full rounded-xl"
                     placeholder="e.g., 9.2"
                     value={formData.cgpa}
-                    onChange={(e) =>
-                      setFormData({ ...formData, cgpa: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('cgpa', e.target.value)}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Current Semester
+                  </label>
+                  <input
+                    type="text"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="e.g., 6"
+                    value={formData.semester}
+                    onChange={(e) => handleInputChange('semester', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Skills Section */}
+              <div className="space-y-3 pt-4">
+                <label className="block text-sm font-medium">
+                  Skills (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="credora-input flex-1 rounded-xl"
+                    placeholder="e.g., React, Node.js, Python"
+                    value={currentSkill}
+                    onChange={(e) => setCurrentSkill(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddSkill}
+                    className="rounded-xl"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                {formData.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {formData.skills.map((skill, index) => (
+                      <div
+                        key={index}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-credora-emerald/10 text-credora-emerald border border-credora-emerald/20"
+                      >
+                        <span className="text-sm font-medium">{skill}</span>
+                        <button
+                          onClick={() => handleRemoveSkill(skill)}
+                          className="hover:text-credora-emerald/70 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -253,12 +396,39 @@ export default function StudentOnboarding() {
                     className="credora-input flex-1 rounded-l-none rounded-r-xl"
                     placeholder="username"
                     value={formData.githubUsername}
-                    onChange={(e) =>
-                      setFormData({ ...formData, githubUsername: e.target.value })
-                    }
+                    onChange={(e) => handleInputChange('githubUsername', e.target.value)}
                   />
                 </div>
               </div>
+              
+              {/* GitHub Stats */}
+              <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Public Repositories
+                  </label>
+                  <input
+                    type="number"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="e.g., 25"
+                    value={formData.repositoriesCount}
+                    onChange={(e) => handleInputChange('repositoriesCount', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Total Contributions
+                  </label>
+                  <input
+                    type="number"
+                    className="credora-input w-full rounded-xl"
+                    placeholder="e.g., 500"
+                    value={formData.contributionsCount}
+                    onChange={(e) => handleInputChange('contributionsCount', e.target.value)}
+                  />
+                </div>
+              </div>
+
               {formData.githubUsername && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -270,7 +440,7 @@ export default function StudentOnboarding() {
                     <div>
                       <p className="font-medium text-sm">Profile detected</p>
                       <p className="text-xs text-muted-foreground">
-                        156 commits • 12 repositories • 3 years active
+                        {formData.repositoriesCount || "0"} repositories • {formData.contributionsCount || "0"} contributions
                       </p>
                     </div>
                   </div>
@@ -284,32 +454,112 @@ export default function StudentOnboarding() {
               <div>
                 <h2 className="text-xl font-semibold mb-2">Work Experience</h2>
                 <p className="text-muted-foreground text-sm">
-                  Add your internships and work experience
+                  Tell us about your professional experience
                 </p>
               </div>
-              <div className="space-y-4">
-                <div className="p-4 rounded-xl border border-border bg-secondary/30">
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    <input
-                      type="text"
-                      className="credora-input rounded-xl"
-                      placeholder="Company name"
-                    />
-                    <input
-                      type="text"
-                      className="credora-input rounded-xl"
-                      placeholder="Role"
-                    />
-                    <input
-                      type="text"
-                      className="credora-input rounded-xl"
-                      placeholder="Duration"
-                    />
+              
+              {/* Number of Internships Counter */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium">
+                  Number of Internships
+                </label>
+                <div className="flex items-center gap-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={decrementInternships}
+                    disabled={formData.numberOfInternships === 0}
+                    className="h-12 w-12 rounded-xl"
+                  >
+                    <Minus className="w-5 h-5" />
+                  </Button>
+                  <div className="flex-1 max-w-xs">
+                    <div className="relative">
+                      <input
+                        type="number"
+                        className="credora-input w-full rounded-xl text-center text-2xl font-bold py-3"
+                        value={formData.numberOfInternships}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setFormData({ ...formData, numberOfInternships: Math.max(0, val) });
+                        }}
+                        min="0"
+                      />
+                    </div>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={incrementInternships}
+                    className="h-12 w-12 rounded-xl"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </Button>
                 </div>
-                <Button variant="outline" className="w-full">
-                  + Add Another Experience
-                </Button>
+                {formData.numberOfInternships > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-xl bg-credora-emerald/5 border border-credora-emerald/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Briefcase className="w-5 h-5 text-credora-emerald" />
+                      <div>
+                        <p className="font-medium text-sm">
+                          {formData.numberOfInternships} {formData.numberOfInternships === 1 ? 'Internship' : 'Internships'} recorded
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          This will boost your credit score
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Certifications Section */}
+              <div className="space-y-3 pt-4">
+                <label className="block text-sm font-medium">
+                  Certifications (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="credora-input flex-1 rounded-xl"
+                    placeholder="e.g., AWS Certified Developer"
+                    value={currentCertification}
+                    onChange={(e) => setCurrentCertification(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCertification())}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddCertification}
+                    className="rounded-xl"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                {formData.certifications.length > 0 && (
+                  <div className="space-y-2">
+                    {formData.certifications.map((cert, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 border border-border"
+                      >
+                        <span className="text-sm font-medium">{cert}</span>
+                        <button
+                          onClick={() => handleRemoveCertification(cert)}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -383,7 +633,9 @@ export default function StudentOnboarding() {
               Previous
             </Button>
             {currentStep === steps.length ? (
-              <Button variant="hero">Complete Profile</Button>
+              <Button variant="hero" onClick={handleCompleteOnboarding} disabled={isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Complete Profile"}
+              </Button>
             ) : (
               <Button variant="default" onClick={handleNext}>
                 Continue

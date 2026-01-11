@@ -286,8 +286,20 @@ export const studentController = {
         throw new NotFoundError('Student profile not found');
       }
 
-      // Get on-chain credit limit
-      const onChainCredit = await blockchainService.getCreditLimit(req.user!.address);
+      // Get on-chain credit limit with fallback
+      let onChainCredit;
+      try {
+        onChainCredit = await blockchainService.getCreditLimit(req.user!.address);
+      } catch (blockchainError: any) {
+        logger.error('Blockchain read failed, using off-chain data:', blockchainError.message);
+        // Fallback to off-chain data if blockchain is unavailable
+        onChainCredit = {
+          score: student.creditScore || 0,
+          limit: student.creditLimit || '0',
+          validUntil: student.creditExpiry || new Date(),
+          nonce: student.nonce || 0,
+        };
+      }
 
       res.json({
         success: true,
