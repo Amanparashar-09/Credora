@@ -33,7 +33,7 @@ _Empowering students with credit based on potential, not collateral_
 - [Getting Started](#-getting-started)
 
 ---
-## [Demo Video Link](https://youtu.be/7GfEZQ55TVY)
+## [--**Demo Video Link**--](https://youtu.be/7GfEZQ55TVY)
 
 ## 🌟 Overview
 
