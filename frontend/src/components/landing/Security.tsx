@@ -9,8 +9,8 @@ const securityFeatures = [
   },
   {
     icon: Fingerprint,
-    title: "Biometric Authentication",
-    description: "Multi-factor authentication with biometric support for maximum security",
+    title: "Two-Factor Authentication",
+    description: "Secure OTP-based multi-factor authentication for every transaction",
   },
   {
     icon: Eye,
@@ -19,8 +19,8 @@ const securityFeatures = [
   },
   {
     icon: FileCheck,
-    title: "RBI Compliant",
-    description: "Fully compliant with Reserve Bank of India digital lending guidelines",
+    title: "Audited Smart Contracts",
+    description: "All smart contracts are independently audited and formally verified for security",
   },
   {
     icon: Server,
@@ -95,7 +95,7 @@ export function Security() {
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <FileCheck className="w-5 h-5" />
-            <span className="text-sm font-medium">RBI Registered</span>
+            <span className="text-sm font-medium">Smart Contracts Verified</span>
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Server className="w-5 h-5" />

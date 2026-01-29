@@ -208,6 +208,111 @@ class BlockchainService {
   }
 
   /**
+   * Get EMI schedule from CredoraPool (on-chain) - TIER 1 FIX #2
+   */
+  async getEMISchedule(borrowerAddress: string): Promise<{
+    principal: string;
+    interestRateBps: number;
+    totalSlices: number;
+    monthlyPayment: string;
+    startDate: Date;
+  } | null> {
+    const provider = this.provider || new ethers.JsonRpcProvider(BLOCKCHAIN_CONFIG.RPC_URL);
+    
+    const contract = new ethers.Contract(
+      BLOCKCHAIN_CONFIG.CREDORA_POOL_ADDRESS,
+      [
+        'function emiSchedules(address) view returns (uint256 principal, uint256 interestRateBps, uint256 totalSlices, uint256 monthlyPayment, uint256 startDate)'
+      ],
+      provider
+    );
+
+    try {
+      const schedule = await contract.emiSchedules(borrowerAddress);
+      
+      // If principal is 0, no active loan
+      if (schedule.principal.toString() === '0') {
+        return null;
+      }
+
+      return {
+        principal: ethers.formatUnits(schedule.principal, 6),
+        interestRateBps: Number(schedule.interestRateBps),
+        totalSlices: Number(schedule.totalSlices),
+        monthlyPayment: ethers.formatUnits(schedule.monthlyPayment, 6),
+        startDate: new Date(Number(schedule.startDate) * 1000),
+      };
+    } catch (error) {
+      console.error('Failed to get EMI schedule:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a specific slice is paid (on-chain verification) - TIER 1 FIX #3
+   */
+  async isSlicePaid(borrowerAddress: string, sliceNumber: number): Promise<boolean> {
+    const provider = this.provider || new ethers.JsonRpcProvider(BLOCKCHAIN_CONFIG.RPC_URL);
+    
+    const contract = new ethers.Contract(
+      BLOCKCHAIN_CONFIG.CREDORA_POOL_ADDRESS,
+      [
+        'function isSlicePaid(address borrower, uint256 sliceNumber) view returns (bool)'
+      ],
+      provider
+    );
+
+    try {
+      return await contract.isSlicePaid(borrowerAddress, sliceNumber);
+    } catch (error) {
+      console.error('Failed to check slice payment status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get loan details from CredoraPool - TIER 1 FIX #5
+   */
+  async getLoanDetails(borrowerAddress: string): Promise<{
+    amount: string;
+    startDate: Date;
+    maturityDate: Date;
+    paidAmount: string;
+    isActive: boolean;
+    isDefaulted: boolean;
+  } | null> {
+    const provider = this.provider || new ethers.JsonRpcProvider(BLOCKCHAIN_CONFIG.RPC_URL);
+    
+    const contract = new ethers.Contract(
+      BLOCKCHAIN_CONFIG.CREDORA_POOL_ADDRESS,
+      [
+        'function loanDetails(address) view returns (uint256 amount, uint256 startDate, uint256 maturityDate, uint256 paidAmount, bool isActive, bool isDefaulted)'
+      ],
+      provider
+    );
+
+    try {
+      const details = await contract.loanDetails(borrowerAddress);
+      
+      if (!details.isActive && details.amount.toString() === '0') {
+        return null;
+      }
+
+      return {
+        amount: ethers.formatUnits(details.amount, 6),
+        startDate: new Date(Number(details.startDate) * 1000),
+        maturityDate: new Date(Number(details.maturityDate) * 1000),
+        paidAmount: ethers.formatUnits(details.paidAmount, 6),
+        isActive: details.isActive,
+        isDefaulted: details.isDefaulted,
+      };
+    } catch (error) {
+      console.error('Failed to get loan details:', error);
+      return null;
+    }
+  }
+
+  /**
    * Register credit limit on-chain in CreditRegistry
    */
   async registerCreditOnChain(attestationData: {
@@ -350,6 +455,14 @@ class BlockchainService {
             throw new Error('Borrow amount cannot be zero.');
           case '0x44a8bc55': // BorrowPaused()
             throw new Error('Borrowing is currently paused by admin.');
+          case '0x8e4a23d6': // Blacklisted()
+            throw new Error('Your account has been blacklisted due to defaults. Please contact support.');
+          case '0x7c214f04': // PersonalLimitExceeded()
+            throw new Error('Borrow amount exceeds personal borrowing limit of $10,000.');
+          case '0x45c8b1a4': // DailyLimitExceeded()
+            throw new Error('Daily platform borrowing limit reached. Please try again tomorrow.');
+          case '0x2d0a3f8e': // MaxUtilizationExceeded()
+            throw new Error('Pool utilization is too high. Please try a smaller amount or wait for more liquidity.');
           default: {
             const msg = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : 'Transaction failed';
             throw new Error(msg);
@@ -407,11 +520,77 @@ class BlockchainService {
   }
 
   /**
-   * Pay individual slice (EMI installment) - calls repay with slice amount
+   * Pay individual slice (EMI installment) using on-chain paySlice function
    */
-  async paySlice(sliceAmount: string): Promise<{ txHash: string; amount: string }> {
-    // Slice payment is just a repayment with specific amount
-    return this.repayLoan(sliceAmount);
+  async paySlice(sliceNumber: number): Promise<{ txHash: string; amount: string }> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+
+    const userAddress = await this.signer.getAddress();
+
+    // Get EMI schedule to know payment amount
+    const schedule = await this.getEMISchedule(userAddress);
+    if (!schedule) {
+      throw new Error('No active loan found');
+    }
+
+    try {
+      // First approve USDT spending for exact EMI amount
+      const usdtContract = new ethers.Contract(
+        BLOCKCHAIN_CONFIG.MOCK_USDT_ADDRESS,
+        MOCK_USDT_ABI,
+        this.signer
+      );
+
+      const paymentAmount = ethers.parseUnits(schedule.monthlyPayment, 6);
+      
+      // Approve CredoraPool to spend exact EMI amount
+      const approveTx = await usdtContract.approve(
+        BLOCKCHAIN_CONFIG.CREDORA_POOL_ADDRESS,
+        paymentAmount
+      );
+      await approveTx.wait();
+
+      // Call paySlice with slice number (amount is enforced on-chain)
+      const poolContract = new ethers.Contract(
+        BLOCKCHAIN_CONFIG.CREDORA_POOL_ADDRESS,
+        [
+          'function paySlice(uint256 sliceNumber) external'
+        ],
+        this.signer
+      );
+
+      const paySliceTx = await poolContract.paySlice(sliceNumber);
+      await paySliceTx.wait();
+
+      return {
+        txHash: paySliceTx.hash,
+        amount: schedule.monthlyPayment,
+      };
+    } catch (error) {
+      console.error('Failed to pay slice:', error);
+      
+      // Handle specific slice payment errors
+      if (error && typeof error === 'object' && 'data' in error && typeof error.data === 'string') {
+        const errorCode = error.data.slice(0, 10);
+        if (errorCode === '0x9bca0625') { // SliceNotInOrder()
+          throw new Error('Slices must be paid in sequential order. Please pay the next due slice.');
+        }
+        if (errorCode === '0x5c5c9f52') { // LoanMatured()
+          throw new Error('Loan has matured and is overdue. Please contact support.');
+        }
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Check if wallet is currently connected
+   */
+  isWalletConnected(): boolean {
+    return this.signer !== null;
   }
 
   /**

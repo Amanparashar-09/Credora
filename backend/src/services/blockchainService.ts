@@ -106,21 +106,15 @@ export const blockchainService = {
       const borrowedNum = Number(ethers.formatUnits(borrowed, 18));
       const utilizationRate = liquidityNum > 0 ? (borrowedNum / liquidityNum) * 100 : 0;
 
-      // Calculate current interest rate based on utilization
-      let interestRate: number;
-      const util = utilizationRate / 100;
-      if (util <= 0.8) {
-        interestRate = 0.02 + (util / 0.8) * 0.08; // 2% to 10%
-      } else {
-        interestRate = 0.10 + ((util - 0.8) / 0.2) * 0.40; // 10% to 50%
-      }
+      // Calculate weighted average pool APY from all active borrowers
+      const poolAPY = await this.calculateWeightedPoolAPY();
 
       const result = {
         totalLiquidity: ethers.formatUnits(liquidity, 18),
         totalBorrowed: ethers.formatUnits(borrowed, 18),
         totalShares: ethers.formatUnits(shares, 18),
         utilizationRate: Math.round(utilizationRate * 100) / 100,
-        currentInterestRate: (interestRate * 100).toFixed(2) + '%',
+        currentInterestRate: poolAPY.toFixed(2) + '%',
       };
       
       logger.info(`Pool stats result:`, result);
@@ -135,8 +129,70 @@ export const blockchainService = {
         totalBorrowed: '0',
         totalShares: '0',
         utilizationRate: 0,
-        currentInterestRate: '2.00%',
+        currentInterestRate: '10.00%',
       };
+    }
+  },
+
+  /**
+   * Calculate weighted average pool APY based on all active borrowers' rates
+   * Returns the APY that investors actually earn (after 8% reserve cut)
+   */
+  async calculateWeightedPoolAPY(): Promise<number> {
+    try {
+      const { StudentProfile } = await import('../models/StudentProfile');
+      
+      // Get all students with active loans (non-zero principal)
+      const activeStudents = await StudentProfile.find({
+        'borrowing.totalBorrowed': { $gt: '0' }
+      }).select('walletAddress borrowing');
+
+      if (activeStudents.length === 0) {
+        // No active loans, return base rate
+        return 10.0; // 10% default when pool is empty
+      }
+
+      const credoraPool = getCredoraPool();
+      let totalInterestPerYear = 0;
+      let totalPrincipal = 0;
+
+      for (const student of activeStudents) {
+        try {
+          // Get on-chain data for this borrower
+          const principal = await credoraPool.userPrincipal(student.walletAddress);
+          const emiSchedule = await credoraPool.emiSchedules(student.walletAddress);
+          
+          const principalNum = Number(ethers.formatUnits(principal, 6));
+          const rateBps = Number(emiSchedule.interestRateBps);
+          
+          if (principalNum > 0 && rateBps > 0) {
+            // Calculate annual interest for this borrower
+            const annualInterest = (principalNum * rateBps) / 10000;
+            totalInterestPerYear += annualInterest;
+            totalPrincipal += principalNum;
+          }
+        } catch (err) {
+          logger.warn(`Failed to get data for student ${student.walletAddress}:`, err);
+          continue;
+        }
+      }
+
+      if (totalPrincipal === 0) {
+        return 10.0; // Default rate
+      }
+
+      // Calculate average APY across all borrowers
+      const poolAPY = (totalInterestPerYear / totalPrincipal) * 100;
+      
+      // Investors get 92% (8% goes to reserve)
+      const investorAPY = poolAPY * 0.92;
+      
+      logger.info(`Weighted pool APY: ${poolAPY.toFixed(2)}% (Investor APY: ${investorAPY.toFixed(2)}%)`);
+      
+      return investorAPY;
+    } catch (error: any) {
+      logger.error('Failed to calculate weighted pool APY:', error.message);
+      return 10.0; // Fallback to default
     }
   },
 

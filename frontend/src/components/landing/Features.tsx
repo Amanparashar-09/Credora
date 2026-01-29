@@ -114,7 +114,7 @@ export function Features() {
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <p className="text-sm text-muted-foreground">Credit Limit</p>
-                      <p className="text-3xl font-bold">₹2,50,000</p>
+                      <p className="text-3xl font-bold">$3,000</p>
                     </div>
                     <div className="w-16 h-16 rounded-2xl bg-credora-emerald/10 flex items-center justify-center">
                       <span className="text-2xl font-bold text-credora-emerald">A+</span>
@@ -207,7 +207,7 @@ export function Features() {
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <p className="text-sm text-muted-foreground">Portfolio Value</p>
-                      <p className="text-3xl font-bold">₹15,00,000</p>
+                      <p className="text-3xl font-bold">$18,000</p>
                     </div>
                     <div className="px-3 py-1.5 rounded-lg bg-credora-emerald/10 text-credora-emerald text-sm font-medium">
                       +12.4% APY
@@ -216,7 +216,7 @@ export function Features() {
                   <div className="space-y-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total Earnings</span>
-                      <span className="font-medium text-credora-emerald">₹1,86,000</span>
+                      <span className="font-medium text-credora-emerald">$2,232</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4 pt-4">
                       <div className="text-center p-3 bg-secondary/50 rounded-xl">
@@ -235,7 +235,7 @@ export function Features() {
                     <div className="pt-4 border-t border-border">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Next payout</span>
-                        <span className="font-medium">₹15,500 in 5 days</span>
+                        <span className="font-medium">$186 in 5 days</span>
                       </div>
                     </div>
                   </div>

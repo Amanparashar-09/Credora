@@ -10,7 +10,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronRight,
-  PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -65,27 +64,6 @@ export default function InvestorDashboard() {
     returns = { totalEarned: '0', monthlyAverage: '0', currentAPY: 0, withdrawable: '0' },
     recentActivity = []
   } = dashboardData || {};
-
-  // Get risk metrics from dashboard data (if available)
-  const riskMetrics = (dashboardData as any)?.riskMetrics || {
-    defaultRate: '1.2',
-    avgLockIn: '6 months',
-    nextPayout: {
-      amount: '0',
-      daysUntil: 15,
-    },
-    utilizationRate: 0,
-  };
-
-  // Determine risk level status
-  const getDefaultRateStatus = (rate: string) => {
-    const rateNum = parseFloat(rate);
-    if (rateNum < 1.5) return { label: 'Excellent', color: 'credora-emerald' };
-    if (rateNum < 2.5) return { label: 'Good', color: 'credora-blue' };
-    return { label: 'Moderate', color: 'credora-amber' };
-  };
-
-  const defaultRateStatus = getDefaultRateStatus(riskMetrics.defaultRate);
 
   return (
     <InvestorLayout>
@@ -158,7 +136,7 @@ export default function InvestorDashboard() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Portfolio Allocation */}
+          {/* Investment Overview */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -166,56 +144,57 @@ export default function InvestorDashboard() {
             className="bg-card rounded-2xl border border-border p-6"
           >
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-semibold text-lg">Portfolio Allocation</h3>
-              <PieChart className="w-5 h-5 text-muted-foreground" />
+              <h3 className="font-semibold text-lg">Investment Overview</h3>
+              <TrendingUp className="w-5 h-5 text-credora-blue" />
             </div>
 
-            {/* Visual Bar */}
-            <div className="h-4 rounded-full overflow-hidden flex mb-6">
-              {portfolio.pools.map((pool, index) => {
-                const percentage = (parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100;
-                return (
-                  <motion.div
-                    key={`${pool.poolAddress}-${index}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${percentage}%` }}
-                    transition={{ duration: 0.8, delay: 0.3 + index * 0.1 }}
-                    className={cn(
-                      index === 0 ? "rounded-l-full" : "",
-                      index === portfolio.pools.length - 1 ? "rounded-r-full" : "",
-                      "bg-credora-" + ["emerald", "blue", "amber"][index % 3]
-                    )}
-                  />
-                );
-              })}
-            </div>
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Current APY</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-credora-emerald/10 text-credora-emerald">
+                    Active
+                  </span>
+                </div>
+                <p className="text-3xl font-bold text-credora-emerald">{portfolio.apy}</p>
+              </div>
 
-            <div className="space-y-4">
-              {portfolio.pools.map((pool, index) => {
-                const percentage = ((parseFloat(pool.currentValue) / parseFloat(portfolio.totalValue)) * 100).toFixed(1);
-                const colorClass = ["emerald", "blue", "amber", "purple"][index % 4];
-                return (
-                  <div key={`pool-${pool.poolAddress}-${index}`} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full bg-credora-${colorClass}`} />
-                      <span className="text-sm">{pool.poolName}</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">
-                        {formatUSDT(parseFloat(pool.currentValue))}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{percentage}%</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+              <div className="h-px bg-border" />
 
-            <Link to="/investor/pools">
-              <Button variant="outline" className="w-full mt-6">
-                Manage Pools
-              </Button>
-            </Link>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total Invested</span>
+                  <span className="font-semibold">{formatUSDT(parseFloat(portfolio.invested))}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total Earned</span>
+                  <span className="font-semibold text-credora-emerald">
+                    +{formatUSDT(parseFloat(returns.totalEarned))}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Available to Withdraw</span>
+                  <span className="font-semibold text-credora-blue">
+                    {formatUSDT(parseFloat(returns.withdrawable))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-px bg-border" />
+
+              <div className="space-y-2">
+                <Link to="/investor/invest">
+                  <Button variant="default" className="w-full">
+                    Invest More
+                  </Button>
+                </Link>
+                <Link to="/investor/analytics">
+                  <Button variant="outline" className="w-full">
+                    View Analytics
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </motion.div>
 
           {/* Recent Activity */}
@@ -282,61 +261,6 @@ export default function InvestorDashboard() {
             </div>
           </motion.div>
         </div>
-
-        {/* Risk Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-card rounded-2xl border border-border p-6"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-semibold text-lg">Risk & Performance</h3>
-              <p className="text-sm text-muted-foreground">
-                Your portfolio is well-diversified across risk tiers
-              </p>
-            </div>
-            <Link to="/investor/analytics">
-              <Button variant="outline" size="sm">
-                Detailed Analytics
-              </Button>
-            </Link>
-          </div>
-          <div className="grid sm:grid-cols-3 gap-6">
-            <div className={`p-4 rounded-xl bg-${defaultRateStatus.color}/5 border border-${defaultRateStatus.color}/20`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Default Rate</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full bg-${defaultRateStatus.color}/10 text-${defaultRateStatus.color}`}>
-                  {defaultRateStatus.label}
-                </span>
-              </div>
-              <p className={`text-2xl font-bold text-${defaultRateStatus.color}`}>
-                {riskMetrics.defaultRate}%
-              </p>
-            </div>
-            <div className="p-4 rounded-xl bg-credora-blue/5 border border-credora-blue/20">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Avg. Lock-in</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-credora-blue/10 text-credora-blue">
-                  Optimal
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-credora-blue">{riskMetrics.avgLockIn}</p>
-            </div>
-            <div className="p-4 rounded-xl bg-credora-amber/5 border border-credora-amber/20">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Next Payout</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-credora-amber/10 text-credora-amber">
-                  {riskMetrics.nextPayout.daysUntil} days
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-credora-amber">
-                {formatUSDT(parseFloat(riskMetrics.nextPayout.amount))}
-              </p>
-            </div>
-          </div>
-        </motion.div>
       </div>
     </InvestorLayout>
   );

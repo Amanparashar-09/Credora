@@ -53,10 +53,10 @@ export default function Slices() {
   const [paymentSlices, setPaymentSlices] = useState<PaymentSlice[]>([]);
   const [numberOfSlices, setNumberOfSlices] = useState("10");
   const [localTransactions, setLocalTransactions] = useState<Transaction[]>([]);
-  const [paidSliceIds, setPaidSliceIds] = useState<number[]>([]);
+  const [walletAddress, setWalletAddress] = useState<string>("");
   const { toast } = useToast();
 
-  // Load local transactions from localStorage
+  // Load local transactions from localStorage (transactions only, not slice status)
   useEffect(() => {
     const stored = localStorage.getItem('student_transactions');
     if (stored) {
@@ -67,14 +67,10 @@ export default function Slices() {
       }
     }
     
-    // Load paid slice IDs
-    const storedPaidSlices = localStorage.getItem('paid_slice_ids');
-    if (storedPaidSlices) {
-      try {
-        setPaidSliceIds(JSON.parse(storedPaidSlices));
-      } catch (e) {
-        console.error('Failed to parse paid slice IDs');
-      }
+    // Get wallet address
+    const address = localStorage.getItem('wallet_address');
+    if (address) {
+      setWalletAddress(address);
     }
   }, []);
 
@@ -85,26 +81,22 @@ export default function Slices() {
     localStorage.setItem('student_transactions', JSON.stringify(newTransactions));
   };
 
-  // Helper function to save paid slice ID
-  const savePaidSlice = (sliceId: number) => {
-    const newPaidSlices = [...paidSliceIds, sliceId];
-    setPaidSliceIds(newPaidSlices);
-    localStorage.setItem('paid_slice_ids', JSON.stringify(newPaidSlices));
-  };
-
   useEffect(() => {
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     // Generate payment slices when borrowing data changes
-    if (dashboardData) {
+    if (dashboardData && walletAddress) {
       generatePaymentSlices();
     }
-  }, [dashboardData, paidSliceIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardData, walletAddress]);
 
-  const generatePaymentSlices = () => {
-    if (!dashboardData) return;
+  // TIER 1 FIX #2 & #3: Fetch EMI schedule from blockchain, verify slice payments on-chain
+  const generatePaymentSlices = async () => {
+    if (!dashboardData || !walletAddress) return;
 
     const totalBorrowed = parseFloat(dashboardData.borrowing.totalBorrowed);
     if (totalBorrowed === 0) {
@@ -112,64 +104,69 @@ export default function Slices() {
       return;
     }
 
-    const interestRate = dashboardData.credit.interestRate / 100;
-    const sliceCount = 10; // Default 10 EMI slices
-    const monthlyInterestRate = interestRate / 12;
-    
-    // Calculate EMI using reducing balance method
-    const emi = (totalBorrowed * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, sliceCount)) / 
-                (Math.pow(1 + monthlyInterestRate, sliceCount) - 1);
-
-    const slices: PaymentSlice[] = [];
-    let remainingPrincipal = totalBorrowed;
-    const today = new Date();
-
-    // Get the borrowing start date from localStorage or use today
-    const borrowingStartKey = 'borrowing_start_date';
-    let borrowingStartDate = localStorage.getItem(borrowingStartKey);
-    if (!borrowingStartDate) {
-      borrowingStartDate = today.toISOString();
-      localStorage.setItem(borrowingStartKey, borrowingStartDate);
-    }
-    const startDate = new Date(borrowingStartDate);
-
-    for (let i = 0; i < sliceCount; i++) {
-      const dueDate = new Date(startDate);
-      dueDate.setDate(startDate.getDate() + (i + 1) * 30); // 30 days apart from borrow date
-
-      const interestForSlice = remainingPrincipal * monthlyInterestRate;
-      const principalForSlice = emi - interestForSlice;
-      remainingPrincipal -= principalForSlice;
-
-      const daysDiff = Math.floor((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    try {
+      // Fetch EMI schedule from smart contract
+      const emiSchedule = await blockchainService.getEMISchedule(walletAddress);
       
-      // Check if this slice was already paid
-      const isPaid = paidSliceIds.includes(i + 1);
-      
-      let status: 'upcoming' | 'due' | 'paid' | 'overdue';
-      if (isPaid) {
-        status = 'paid';
-      } else if (daysDiff < 0) {
-        status = 'overdue';
-      } else if (daysDiff <= 7) {
-        status = 'due';
-      } else {
-        status = 'upcoming';
+      if (!emiSchedule) {
+        setPaymentSlices([]);
+        return;
       }
 
-      slices.push({
-        id: i + 1,
-        sliceNumber: i + 1,
-        amount: emi,
-        dueDate: dueDate.toISOString(),
-        status: status,
-        principal: principalForSlice,
-        interest: interestForSlice,
-        paidDate: isPaid ? new Date().toISOString() : undefined,
-      });
-    }
+      const slices: PaymentSlice[] = [];
+      const today = new Date();
+      const startDate = emiSchedule.startDate;
+      const monthlyPayment = parseFloat(emiSchedule.monthlyPayment);
+      
+      // Calculate interest breakdown (approximation for display)
+      const totalPrincipal = parseFloat(emiSchedule.principal);
+      const annualRate = emiSchedule.interestRateBps / 10000; // Convert bps to decimal
+      const monthlyRate = annualRate / 12;
+      let remainingPrincipal = totalPrincipal;
 
-    setPaymentSlices(slices);
+      for (let i = 1; i <= emiSchedule.totalSlices; i++) {
+        const dueDate = new Date(startDate);
+        dueDate.setDate(startDate.getDate() + i * 30); // 30 days apart
+
+        // Calculate interest and principal for this slice
+        const interestForSlice = remainingPrincipal * monthlyRate;
+        const principalForSlice = monthlyPayment - interestForSlice;
+        remainingPrincipal -= principalForSlice;
+
+        const daysDiff = Math.floor((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // TIER 1 FIX #3: Check if slice is paid ON-CHAIN (no localStorage!)
+        const isPaid = await blockchainService.isSlicePaid(walletAddress, i);
+        
+        let status: 'upcoming' | 'due' | 'paid' | 'overdue';
+        if (isPaid) {
+          status = 'paid';
+        } else if (daysDiff < 0) {
+          status = 'overdue';
+        } else if (daysDiff <= 7) {
+          status = 'due';
+        } else {
+          status = 'upcoming';
+        }
+
+        slices.push({
+          id: i,
+          sliceNumber: i,
+          amount: monthlyPayment,
+          dueDate: dueDate.toISOString(),
+          status: status,
+          principal: principalForSlice,
+          interest: interestForSlice,
+          paidDate: isPaid ? new Date().toISOString() : undefined,
+        });
+      }
+
+      setPaymentSlices(slices);
+    } catch (error) {
+      console.error('Failed to generate payment slices:', error);
+      // Fallback to empty if blockchain fetch fails
+      setPaymentSlices([]);
+    }
   };
 
   const fetchData = async () => {
@@ -177,7 +174,7 @@ export default function Slices() {
       setIsLoading(true);
       const data = await studentService.getDashboard();
       setDashboardData(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to fetch data:", err);
       toast({
         title: "Error",
@@ -214,13 +211,11 @@ export default function Slices() {
     try {
       setIsBorrowing(true);
       
-      // Connect wallet if not connected and get address
-      let walletAddress = localStorage.getItem('wallet_address');
-      if (!walletAddress) {
-        const { address } = await blockchainService.connectWallet();
-        walletAddress = address;
-        localStorage.setItem('wallet_address', address);
-      }
+      // Always connect wallet to ensure signer is initialized
+      // (class state resets on page refresh even if address is in localStorage)
+      const { address } = await blockchainService.connectWallet();
+      const walletAddress = address;
+      localStorage.setItem('wallet_address', address);
 
       if (!walletAddress) {
         throw new Error('Failed to get wallet address. Please connect your wallet.');
@@ -247,8 +242,8 @@ export default function Slices() {
 
           // Wait a bit for the transaction to be confirmed
           await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (registerErr: any) {
-          throw new Error(`Failed to register credit on-chain: ${registerErr.message}`);
+        } catch (registerErr: unknown) {
+          throw new Error(`Failed to register credit on-chain: ${registerErr instanceof Error ? registerErr.message : String(registerErr)}`);
         }
       }
 
@@ -265,10 +260,7 @@ export default function Slices() {
         status: 'completed',
       });
 
-      // Reset paid slices and set new borrowing start date for fresh loan
-      setPaidSliceIds([]);
-      localStorage.setItem('paid_slice_ids', JSON.stringify([]));
-      localStorage.setItem('borrowing_start_date', new Date().toISOString());
+      // TIER 1 FIX #3: No need to reset localStorage - slice status is on-chain
       
       toast({
         title: "Borrow Successful",
@@ -287,10 +279,10 @@ export default function Slices() {
       
       // Refresh data after borrowing
       setTimeout(fetchData, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Borrowing Failed",
-        description: err.message || "Failed to process borrowing request. Make sure your wallet is connected.",
+        description: err instanceof Error ? err.message : "Failed to process borrowing request. Make sure your wallet is connected.",
         variant: "destructive",
       });
     } finally {
@@ -323,11 +315,8 @@ export default function Slices() {
     try {
       setIsRepaying(true);
       
-      // Connect wallet if not connected
-      const walletAddress = localStorage.getItem('wallet_address');
-      if (!walletAddress) {
-        await blockchainService.connectWallet();
-      }
+      // Always connect wallet to ensure signer is initialized
+      await blockchainService.connectWallet();
 
       // Call smart contract repay function (includes USDT approval)
       const result = await blockchainService.repayLoan(amount.toString());
@@ -359,10 +348,10 @@ export default function Slices() {
       
       // Refresh data after repayment
       setTimeout(fetchData, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Repayment Failed",
-        description: err.message || "Failed to process repayment. Make sure you have enough USDT and your wallet is connected.",
+        description: err instanceof Error ? err.message : "Failed to process repayment. Make sure you have enough USDT and your wallet is connected.",
         variant: "destructive",
       });
     } finally {
@@ -370,43 +359,33 @@ export default function Slices() {
     }
   };
 
+  // TIER 1 FIX #3 & #6: Pay slice using on-chain function with sequential enforcement
   const handlePaySlice = async (slice: PaymentSlice) => {
     try {
       // Always ensure wallet is connected and signer is set
-      const address = await blockchainService.connectWallet();
+      const { address } = await blockchainService.connectWallet();
       if (!address) {
         throw new Error('Please connect your wallet first');
       }
 
-      // Call smart contract repay function with slice amount (includes USDT approval)
-      const result = await blockchainService.paySlice(slice.amount.toString());
+      // TIER 1 FIX #6: Call smart contract paySlice with slice number
+      // Amount is enforced on-chain, sequential payment is enforced
+      const result = await blockchainService.paySlice(slice.sliceNumber);
       
       // Save transaction to localStorage
       saveTransaction({
         id: result.txHash,
         type: 'repay',
-        amount: slice.amount.toString(), // Store in USDT, not wei
+        amount: result.amount, // Amount from contract
         timestamp: new Date().toISOString(),
         txHash: result.txHash,
         status: 'completed',
       });
-
-      // Save paid slice ID to localStorage
-      savePaidSlice(slice.id);
       
       toast({
         title: "Slice Payment Successful",
-        description: `Successfully paid Slice #${slice.sliceNumber} - ${formatUSDT(slice.amount)}. TX: ${result.txHash.slice(0, 10)}...`,
+        description: `Successfully paid Slice #${slice.sliceNumber} - ${formatUSDT(parseFloat(result.amount))}. TX: ${result.txHash.slice(0, 10)}...`,
       });
-      
-      // Update slice status to paid (local state)
-      setPaymentSlices(prev => 
-        prev.map(s => 
-          s.id === slice.id 
-            ? { ...s, status: 'paid' as const, paidDate: new Date().toISOString() }
-            : s
-        )
-      );
 
       // Sync borrowing data with backend
       try {
@@ -415,12 +394,13 @@ export default function Slices() {
         console.error('Failed to sync borrowing data:', syncErr);
       }
 
-      // Refresh dashboard data
+      // TIER 1 FIX #3: Refresh slice status from blockchain (no local state update)
+      await generatePaymentSlices();
       setTimeout(fetchData, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Payment Failed",
-        description: err.message || "Failed to process slice payment. Make sure you have enough USDT and your wallet is connected.",
+        description: err instanceof Error ? err.message : "Failed to process slice payment. Make sure you have enough USDT and your wallet is connected.",
         variant: "destructive",
       });
     }

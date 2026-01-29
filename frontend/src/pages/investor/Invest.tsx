@@ -7,23 +7,20 @@ import { CONTRACT_CONFIG } from "@/lib/constants";
 import { useUser } from "@/lib/userContext";
 import investorService from "@/services/investor.service";
 import { useNavigate } from "react-router-dom";
-import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, AlertCircle, TrendingUp, Calendar } from "lucide-react";
 
 // Import ABIs
 import MockUSDTABI from "@/abis/MockUSDT.json";
 import CredoraPoolABI from "@/abis/CredoraPool.json";
-
-type RiskTier = "Low" | "Medium" | "High";
-type LockInPeriod = "3 months" | "6 months" | "12 months";
 
 export default function Invest() {
   const { walletAddress } = useUser();
   const navigate = useNavigate();
   
   const [amount, setAmount] = useState("");
-  const [selectedRisk, setSelectedRisk] = useState<RiskTier>("Medium");
-  const [selectedLockIn, setSelectedLockIn] = useState<LockInPeriod>("6 months");
+  const [lockInMonths, setLockInMonths] = useState(6); // Default 6 months
   const [usdtBalance, setUsdtBalance] = useState("0");
+  const [poolAPY, setPoolAPY] = useState(10.0); // Current pool APY
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<"idle" | "approving" | "depositing" | "recording" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -31,6 +28,7 @@ export default function Invest() {
 
   useEffect(() => {
     fetchUSDTBalance();
+    fetchPoolAPY();
   }, [walletAddress]);
 
   const fetchUSDTBalance = async () => {
@@ -48,6 +46,26 @@ export default function Invest() {
     } catch (error) {
       console.error("Failed to fetch USDT balance:", error);
     }
+  };
+
+  const fetchPoolAPY = async () => {
+    try {
+      const pools = await investorService.getPools();
+      if (pools && pools.length > 0) {
+        const apy = parseFloat(pools[0].apy);
+        setPoolAPY(apy);
+      }
+    } catch (error) {
+      console.error("Failed to fetch pool APY:", error);
+    }
+  };
+
+  // Calculate estimated earnings based on amount, APY, and time period
+  const calculateEstimatedEarnings = () => {
+    const amountNum = parseFloat(amount) || 0;
+    const years = lockInMonths / 12;
+    const earnings = amountNum * (poolAPY / 100) * years;
+    return earnings;
   };
 
   const handleInvest = async () => {
@@ -86,7 +104,7 @@ export default function Invest() {
 
       // Step 3: Record in backend
       setCurrentStep("recording");
-      await investorService.recordInvestment(amount, receipt.hash, selectedRisk, selectedLockIn);
+      await investorService.recordInvestment(amount, receipt.hash, lockInMonths);
 
       // Success
       setCurrentStep("success");
@@ -138,24 +156,42 @@ export default function Invest() {
   };
 
   const isFormDisabled = isLoading || currentStep === "success";
+  const estimatedEarnings = calculateEstimatedEarnings();
+  const estimatedTotal = (parseFloat(amount) || 0) + estimatedEarnings;
 
   return (
     <InvestorLayout>
       <div className="max-w-3xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-2xl border border-border p-8">
-          <h2 className="text-2xl font-bold mb-6">Invest in Student Pool</h2>
+          <h2 className="text-2xl font-bold mb-6">Invest in Credora Pool</h2>
           
-          {/* USDT Balance Display */}
-          <div className="mb-6 p-4 bg-muted/50 rounded-xl">
-            <p className="text-sm text-muted-foreground mb-1">Your USDT Balance</p>
-            <p className="text-2xl font-bold">{parseFloat(usdtBalance).toFixed(2)} USDT</p>
-            {parseFloat(usdtBalance) === 0 && (
-              <div className="mt-2 flex items-start gap-2 text-sm text-amber-600">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>You need USDT tokens to invest. You can mint test tokens from the MockUSDT contract.</span>
+          {/* Current Pool Stats */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="p-4 bg-gradient-to-br from-credora-blue/10 to-credora-blue/5 rounded-xl border border-credora-blue/20">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="w-4 h-4 text-credora-blue" />
+                <p className="text-sm text-muted-foreground">Current Pool APY</p>
               </div>
-            )}
+              <p className="text-2xl font-bold text-credora-blue">{poolAPY.toFixed(2)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">After 8% reserve fee</p>
+            </div>
+            
+            <div className="p-4 bg-muted/50 rounded-xl">
+              <p className="text-sm text-muted-foreground mb-1">Your USDT Balance</p>
+              <p className="text-2xl font-bold">{parseFloat(usdtBalance).toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Available to invest</p>
+            </div>
           </div>
+
+          {parseFloat(usdtBalance) === 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-800">
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className="font-medium mb-1">No USDT Balance</p>
+                <p>You need USDT tokens to invest. You can mint test tokens from the MockUSDT contract.</p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-6">
             <div>
@@ -166,52 +202,70 @@ export default function Invest() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isFormDisabled}
-                className="credora-input w-full rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                className="credora-input w-full rounded-xl disabled:opacity-50 disabled:cursor-not-allowed text-lg px-4 py-3"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Risk Tier</label>
-              <div className="grid grid-cols-3 gap-3">
-                {(["Low", "Medium", "High"] as RiskTier[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setSelectedRisk(r)}
-                    disabled={isFormDisabled}
-                    className={`p-4 rounded-xl border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                      selectedRisk === r
-                        ? "border-credora-blue bg-credora-blue/10"
-                        : "border-border hover:border-credora-blue"
-                    }`}
-                  >
-                    <p className="font-medium">{r}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {r === "Low" ? "8-9%" : r === "Medium" ? "10-11%" : "12-14%"} APY
-                    </p>
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-credora-blue" />
+                  Investment Period
+                </label>
+                <span className="text-sm font-bold text-credora-blue">{lockInMonths} months</span>
               </div>
+              
+              {/* Slider */}
+              <input
+                type="range"
+                min="3"
+                max="60"
+                step="3"
+                value={lockInMonths}
+                onChange={(e) => setLockInMonths(parseInt(e.target.value))}
+                disabled={isFormDisabled}
+                className="w-full h-2 bg-gradient-to-r from-credora-blue/20 to-credora-blue/40 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed slider-thumb"
+                style={{
+                  background: `linear-gradient(to right, #1e40af 0%, #1e40af ${((lockInMonths - 3) / 57) * 100}%, #e5e7eb ${((lockInMonths - 3) / 57) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+              
+              {/* Time markers */}
+              <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                <span>3M</span>
+                <span>1Y</span>
+                <span>2Y</span>
+                <span>3Y</span>
+                <span>5Y</span>
+              </div>
+              
+              <p className="text-xs text-muted-foreground mt-3">
+                Note: Lock-in period is informational only. You can withdraw anytime from the smart contract.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Lock-in Period</label>
-              <div className="grid grid-cols-3 gap-3">
-                {(["3 months", "6 months", "12 months"] as LockInPeriod[]).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setSelectedLockIn(p)}
-                    disabled={isFormDisabled}
-                    className={`p-3 rounded-xl border transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                      selectedLockIn === p
-                        ? "border-credora-blue bg-credora-blue/10"
-                        : "border-border hover:border-credora-blue"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Estimated Earnings Display */}
+            {amount && parseFloat(amount) > 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl"
+              >
+                <p className="text-sm font-medium text-green-800 mb-3">Estimated Returns</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-green-700 mb-1">Total Earnings</p>
+                    <p className="text-2xl font-bold text-green-900">${estimatedEarnings.toFixed(2)}</p>
+                    <p className="text-xs text-green-600 mt-1">Over {lockInMonths} months @ {poolAPY.toFixed(2)}% APY</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-green-700 mb-1">Total Value</p>
+                    <p className="text-2xl font-bold text-green-900">${estimatedTotal.toFixed(2)}</p>
+                    <p className="text-xs text-green-600 mt-1">Principal + Interest</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             {/* Status Message */}
             {currentStep !== "idle" && (

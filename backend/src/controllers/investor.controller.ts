@@ -120,7 +120,7 @@ export const investorController = {
    */
   async invest(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { amount, txHash } = req.body;
+      const { amount, txHash, lockInMonths } = req.body;
 
       if (!amount || !txHash) {
         throw new ValidationError('Amount and transaction hash are required');
@@ -162,14 +162,18 @@ export const investorController = {
 
       await investor.save();
 
-      // Record transaction
+      // Record transaction with optional lock-in period
+      const description = lockInMonths 
+        ? `Deposited ${amount} USDT to Credora Main Pool (${lockInMonths} month lock-in)`
+        : `Deposited ${amount} USDT to Credora Main Pool`;
+
       await Transaction.create({
         walletAddress: req.user!.address,
         type: 'deposit',
         amount: amount,
         txHash: txHash,
         poolAddress: poolAddress,
-        description: `Deposited ${amount} USDT to Credora Main Pool`,
+        description,
         status: 'completed',
       });
 
@@ -180,6 +184,7 @@ export const investorController = {
           amount: amount,
           txHash: txHash,
           totalDeposited: investor.totalDeposited,
+          lockInMonths: lockInMonths || 0,
         },
       });
     } catch (error) {

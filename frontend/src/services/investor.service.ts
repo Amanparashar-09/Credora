@@ -114,12 +114,11 @@ class InvestorService {
   /**
    * Record investment transaction
    */
-  async recordInvestment(amount: string, txHash: string, riskTier?: string, lockInPeriod?: string): Promise<void> {
+  async recordInvestment(amount: string, txHash: string, lockInMonths?: number): Promise<void> {
     const response = await api.post<ApiResponse<{ message: string; amount: string; txHash: string; totalDeposited: string }>>('/investor/invest', {
       amount,
       txHash,
-      riskTier,
-      lockInPeriod,
+      lockInMonths,
     });
     if (!response.data.success) {
       throw new Error('Failed to record investment');
