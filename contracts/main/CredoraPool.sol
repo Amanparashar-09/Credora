@@ -631,11 +631,8 @@ contract CredoraPool {
         usdt.safeTransferFrom(msg.sender, address(this), paymentAmount);
 
         // Update debt using internal payment logic
-        uint256 principal = userPrincipal[msg.sender];
-        uint256 interest = userInterestAccrued[msg.sender];
-
-        uint256 interestPaid = paymentAmount > interest
-            ? interest
+        uint256 interestPaid = paymentAmount > userInterestAccrued[msg.sender]
+            ? userInterestAccrued[msg.sender]
             : paymentAmount;
         uint256 principalPaid = paymentAmount - interestPaid;
 

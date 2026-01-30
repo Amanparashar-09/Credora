@@ -243,7 +243,18 @@ export default function Slices() {
           // Wait a bit for the transaction to be confirmed
           await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (registerErr: unknown) {
-          throw new Error(`Failed to register credit on-chain: ${registerErr instanceof Error ? registerErr.message : String(registerErr)}`);
+          const errorMsg = registerErr instanceof Error ? registerErr.message : String(registerErr);
+          
+          // Check if this is a wallet already registered error
+          if (errorMsg.includes('Wallet already registered') || errorMsg.includes('WalletAlreadyRegistered')) {
+            throw new Error(
+              'This wallet is already registered with another profile. ' +
+              'For security reasons, one wallet can only have one student profile. ' +
+              'Please use a different wallet address or contact support.'
+            );
+          }
+          
+          throw new Error(`Failed to register credit on-chain: ${errorMsg}`);
         }
       }
 

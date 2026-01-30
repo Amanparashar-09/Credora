@@ -176,6 +176,7 @@ export interface Portfolio {
 
 export interface InvestorBalance {
   usdtBalance: string;
+  wallet: string;
   totalShares: string;
   portfolioValue: string;
 }
@@ -183,6 +184,7 @@ export interface InvestorBalance {
 export interface Returns {
   totalEarned: string;
   monthlyAverage: string;
+  currentAPY: number;
   withdrawable: string;
   breakdown: {
     poolName: string;

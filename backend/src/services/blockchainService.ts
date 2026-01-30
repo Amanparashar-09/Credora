@@ -82,6 +82,30 @@ export const blockchainService = {
   },
 
   /**
+   * Check if a wallet address is already registered on-chain
+   */
+  async isWalletRegistered(walletAddress: string): Promise<{
+    isRegistered: boolean;
+    registrationTimestamp: number;
+  }> {
+    try {
+      const creditRegistry = getCreditRegistry();
+      const [isRegistered, timestamp] = await Promise.all([
+        creditRegistry.isRegistered(walletAddress),
+        creditRegistry.registrationTimestamp(walletAddress),
+      ]);
+      
+      return {
+        isRegistered,
+        registrationTimestamp: Number(timestamp),
+      };
+    } catch (error: any) {
+      logger.error('Failed to check wallet registration:', error.message);
+      throw new Error('Failed to check wallet registration status');
+    }
+  },
+
+  /**
    * Get pool statistics from CredoraPool
    */
   async getPoolStats(): Promise<{

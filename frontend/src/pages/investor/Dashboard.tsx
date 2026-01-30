@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronRight,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -17,10 +18,19 @@ import investorService from "@/services/investor.service";
 import { formatUSDT } from "@/utils/currency";
 import type { InvestorDashboard as DashboardData } from "@/types/api.types";
 import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function InvestorDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPeriod, setSelectedPeriod] = useState("12");
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -112,17 +122,48 @@ export default function InvestorDashboard() {
             icon={Wallet}
             variant="blue"
           />
-          <StatCard
-            label="Monthly Returns"
-            value={formatUSDT(parseFloat(returns.monthlyAverage))}
-            subValue="avg."
-            icon={TrendingUp}
-            trend={{ value: 8.2, isPositive: true }}
-            variant="emerald"
-          />
+          
+          {/* Estimated Returns Card with Time Period Selector */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card className="p-4 h-full bg-gradient-to-br from-credora-emerald/5 to-credora-emerald/10 border-credora-emerald/20">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl bg-credora-emerald/10 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-credora-emerald" />
+                </div>
+                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                  <SelectTrigger className="w-[90px] h-7 text-xs border-credora-emerald/30">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3">3 months</SelectItem>
+                    <SelectItem value="6">6 months</SelectItem>
+                    <SelectItem value="12">1 year</SelectItem>
+                    <SelectItem value="24">2 years</SelectItem>
+                    <SelectItem value="36">3 years</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-sm text-muted-foreground mb-1">Estimated Returns</p>
+              <p className="text-2xl font-bold text-credora-emerald">
+                {formatUSDT(
+                  parseFloat(balance.portfolioValue) * 
+                  (returns.currentAPY / 100) * 
+                  (parseInt(selectedPeriod) / 12)
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                over {selectedPeriod} {parseInt(selectedPeriod) === 1 ? "month" : selectedPeriod === "12" ? "year" : selectedPeriod === "24" ? "years" : selectedPeriod === "36" ? "years" : "months"}
+              </p>
+            </Card>
+          </motion.div>
+
           <StatCard
             label="Wallet Balance"
-            value={formatUSDT(parseFloat(balance.usdtBalance || '0'))}
+            value={formatUSDT(parseFloat(balance.wallet || '0'))}
             icon={Wallet}
             variant="purple"
           />
@@ -156,7 +197,7 @@ export default function InvestorDashboard() {
                     Active
                   </span>
                 </div>
-                <p className="text-3xl font-bold text-credora-emerald">{portfolio.apy}</p>
+                <p className="text-3xl font-bold text-credora-emerald">{returns.currentAPY}%</p>
               </div>
 
               <div className="h-px bg-border" />
@@ -164,7 +205,7 @@ export default function InvestorDashboard() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Invested</span>
-                  <span className="font-semibold">{formatUSDT(parseFloat(portfolio.invested))}</span>
+                  <span className="font-semibold">{formatUSDT(parseFloat(balance.portfolioValue))}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Earned</span>
@@ -240,7 +281,7 @@ export default function InvestorDashboard() {
                     </div>
                     <div>
                       <p className="font-medium text-sm">{activity.description}</p>
-                      <p className="text-xs text-muted-foreground">{activity.date}</p>
+                      <p className="text-xs text-muted-foreground">{activity.timestamp}</p>
                     </div>
                   </div>
                   <p
@@ -254,7 +295,7 @@ export default function InvestorDashboard() {
                     )}
                   >
                     {activity.type === "return" ? "+" : activity.type === "withdrawal" ? "-" : "+"}
-                    {formatUSDT(Math.abs(activity.amount))}
+                    {formatUSDT(Math.abs(parseFloat(activity.amount.toString())))}
                   </p>
                 </div>
               ))}
@@ -264,8 +305,4 @@ export default function InvestorDashboard() {
       </div>
     </InvestorLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }

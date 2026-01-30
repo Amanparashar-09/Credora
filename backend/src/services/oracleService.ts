@@ -97,6 +97,20 @@ export const oracleService = {
       // Get current on-chain nonce from CreditRegistry contract
       const onChainNonce = await blockchainService.getCurrentNonce(user);
 
+      // Check if wallet is already registered (nonce == 0 means first registration)
+      if (onChainNonce === 0) {
+        // This is a first-time registration attempt
+        // Check if wallet is already registered on-chain
+        const { isRegistered } = await blockchainService.isWalletRegistered(user);
+        
+        if (isRegistered) {
+          throw new Error(
+            'Wallet already registered. One wallet can only have one student profile. ' +
+            'Please use a different wallet address.'
+          );
+        }
+      }
+
       // Create attestation
       const expiry = Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60); // 90 days
       const attestation: CreditAttestation = {

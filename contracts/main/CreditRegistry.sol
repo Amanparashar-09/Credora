@@ -17,6 +17,7 @@ contract CreditRegistry {
     error ZeroUser();
     error ZeroAttester();
     error Blacklisted();
+    error WalletAlreadyRegistered();
 
     event AttesterUpdated(
         address indexed oldAttester,
@@ -35,6 +36,7 @@ contract CreditRegistry {
         uint256 newCreditLimit
     );
     event UserBlacklisted(address indexed user, uint256 defaultCount);
+    event WalletRegistered(address indexed wallet, uint256 timestamp);
 
     struct LimitUpdate {
         address user;
@@ -73,6 +75,10 @@ contract CreditRegistry {
     mapping(address => uint256) public defaultCount;
     mapping(address => bool) public isBlacklisted;
     mapping(address => uint256) public lastDefaultTimestamp;
+
+    // Wallet uniqueness tracking
+    mapping(address => bool) public isRegistered;
+    mapping(address => uint256) public registrationTimestamp;
 
     constructor(address initialAttester) {
         if (initialAttester == address(0)) revert ZeroAttester();
@@ -202,6 +208,17 @@ contract CreditRegistry {
         if (u.nonce != currentNonce[u.user]) revert NonceMismatch();
         if (!verify(u, signature)) revert InvalidSignature();
 
+        // Check if this is first registration (nonce == 0 and not registered)
+        if (u.nonce == 0 && !isRegistered[u.user]) {
+            // First time registration - mark as registered
+            isRegistered[u.user] = true;
+            registrationTimestamp[u.user] = block.timestamp;
+            emit WalletRegistered(u.user, block.timestamp);
+        } else if (u.nonce == 0 && isRegistered[u.user]) {
+            // Trying to register an already registered wallet
+            revert WalletAlreadyRegistered();
+        }
+
         scoreOf[u.user] = u.score;
         limitOf[u.user] = u.creditLimit;
         expiryOf[u.user] = u.expiry;
@@ -209,5 +226,25 @@ contract CreditRegistry {
         currentNonce[u.user] = u.nonce + 1;
 
         emit LimitUpdated(u.user, u.score, u.creditLimit, u.expiry, u.nonce);
+    }
+
+    /**
+     * Check if a wallet address is already registered
+     * @param wallet The wallet address to check
+     * @return true if wallet is registered, false otherwise
+     */
+    function isWalletRegistered(address wallet) external view returns (bool) {
+        return isRegistered[wallet];
+    }
+
+    /**
+     * Get wallet registration timestamp
+     * @param wallet The wallet address
+     * @return timestamp when wallet was registered (0 if not registered)
+     */
+    function getRegistrationTimestamp(
+        address wallet
+    ) external view returns (uint256) {
+        return registrationTimestamp[wallet];
     }
 }
