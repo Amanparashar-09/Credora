@@ -207,6 +207,7 @@ contract CreditRegistry {
         if (u.expiry < block.timestamp) revert ExpiredAttestation();
         if (u.nonce != currentNonce[u.user]) revert NonceMismatch();
         if (!verify(u, signature)) revert InvalidSignature();
+        require(u.score <= 100, "Credit score must be 0-100");
 
         // Check if this is first registration (nonce == 0 and not registered)
         if (u.nonce == 0 && !isRegistered[u.user]) {

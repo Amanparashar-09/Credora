@@ -39,8 +39,30 @@ async def score_student(
             "internships": internships
         }
 
+        print(f"\n{'='*60}")
+        print(f"🔍 CREDIT SCORING REQUEST")
+        print(f"{'='*60}")
+        print(f"GitHub Username: {github_username}")
+        print(f"GPA: {gpa}")
+        print(f"Internships: {internships}")
+        print(f"Resume Length: {len(resume_text)} characters")
+        print(f"Resume Preview: {resume_text[:200]}...")
+
         X = build_feature_vector(student)
+        
+        print(f"\n📊 FEATURE VECTOR (normalized 0-1):")
+        feature_names = [
+            "Commit Frequency", "Consistency", "Code Quality", 
+            "Complexity", "Language Diversity", "Resume Depth",
+            "Resume Variation", "Market Alignment", "GPA", "Internships"
+        ]
+        for i, (name, value) in enumerate(zip(feature_names, X)):
+            print(f"  x{i+1:2d} - {name:20s}: {value:.4f}")
+        
         score = calculate_credit_score(X)
+        
+        print(f"\n✅ FINAL SCORE: {score}/100")
+        print(f"{'='*60}\n")
 
         return {
             "credora_score": score,

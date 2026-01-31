@@ -489,18 +489,6 @@ export default function StudentOnboarding() {
                     onChange={(e) => handleInputChange('email', e.target.value)}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    className="credora-input w-full rounded-xl"
-                    placeholder="+91 XXXXX XXXXX"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                  />
-                </div>
               </div>
             </div>
           )}

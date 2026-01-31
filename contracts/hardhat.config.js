@@ -14,10 +14,10 @@ module.exports = {
   },
   networks: {
     hoodi: {
-      url: "https://ethereum-hoodi-rpc.publicnode.com",
+      url: "https://rpc.hoodi.ethpandaops.io",
       chainId: 560048,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      timeout: 60000,
+      timeout: 120000,
       gasPrice: 100000000000, // 100 Gwei - higher to replace pending tx
     },
   },

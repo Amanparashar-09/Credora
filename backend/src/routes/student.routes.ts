@@ -48,6 +48,7 @@ router.get('/documents/:id', apiLimiter, studentController.getDocument);
 // Credit scoring
 router.post('/submit-for-scoring', apiLimiter, studentController.submitForScoring);
 router.get('/attestation-data', apiLimiter, studentController.getAttestationData);
+router.get('/onchain-credit', apiLimiter, studentController.getOnChainCredit);
 router.get('/credit-status', apiLimiter, studentController.getCreditStatus);
 router.get('/credit-history', apiLimiter, studentController.getCreditHistory);
 

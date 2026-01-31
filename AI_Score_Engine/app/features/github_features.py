@@ -66,8 +66,12 @@ def github_features(username, token=None):
 
     commits_per_month = total_commits / max(len(active_months), 1)
 
-    x1 = min(commits_per_month / 30, 1.0)   # commit frequency
-    x2 = min(len(active_months) / 12, 1.0)  # consistency
-    x5 = min(len(languages) / 5, 1.0)       # diversity
+    # More realistic normalization:
+    # - 5+ commits/month = good (was 30)
+    # - 6+ active months = consistent (was 12)
+    # - 3+ languages = diverse (was 5)
+    x1 = min(commits_per_month / 5, 1.0)    # commit frequency (5 commits/month = 1.0)
+    x2 = min(len(active_months) / 6, 1.0)   # consistency (6 months = 1.0)
+    x5 = min(len(languages) / 3, 1.0)        # diversity (3 languages = 1.0)
 
     return x1, x2, x5

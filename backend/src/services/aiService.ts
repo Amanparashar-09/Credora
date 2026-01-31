@@ -1,19 +1,16 @@
 import axios from 'axios';
+import FormData from 'form-data';
 import { logger } from '../utils/logger';
 
-const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000/score';
+const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 const AI_ENGINE_TIMEOUT = parseInt(process.env.AI_ENGINE_TIMEOUT || '30000');
 
 export interface StudentDataForScoring {
-  university: string;
-  major: string;
-  gpa?: number;
-  graduationYear: number;
-  workExperience?: number;
-  certifications?: string[];
-  skills?: string[];
-  resumeText?: string;
-  linkedinProfile?: string;
+  github_username: string;  // Required by AI
+  gpa: number;             // Required by AI
+  internships: number;     // Required by AI
+  resumeBuffer: Buffer;    // Required by AI (PDF file)
+  resumeFilename: string;  // Original filename
 }
 
 export interface CreditScoreResponse {
@@ -57,18 +54,48 @@ export const aiService = {
    */
   async calculateCreditScore(studentData: StudentDataForScoring): Promise<CreditScoreResponse> {
     try {
+      // Validate input data
+      if (!studentData.github_username || studentData.github_username.trim() === '') {
+        throw new Error('GitHub username is required');
+      }
+      
+      if (studentData.gpa === undefined || studentData.gpa === null || studentData.gpa < 0 || studentData.gpa > 10) {
+        throw new Error('GPA must be between 0 and 10');
+      }
+      
+      if (studentData.internships === undefined || studentData.internships === null || studentData.internships < 0) {
+        throw new Error('Internships must be a non-negative number');
+      }
+      
+      if (!studentData.resumeBuffer || studentData.resumeBuffer.length === 0) {
+        throw new Error('Resume PDF buffer is empty');
+      }
+
       logger.info('Requesting credit score from AI engine', {
-        university: studentData.university,
-        major: studentData.major,
+        github_username: studentData.github_username,
+        gpa: studentData.gpa,
+        internships: studentData.internships,
+        resumeSize: studentData.resumeBuffer.length,
+        resumeFilename: studentData.resumeFilename,
+      });
+
+      // Create form data as expected by AI engine
+      const formData = new FormData();
+      formData.append('github_username', studentData.github_username);
+      formData.append('gpa', studentData.gpa.toString());
+      formData.append('internships', studentData.internships.toString());
+      formData.append('resume', studentData.resumeBuffer, {
+        filename: studentData.resumeFilename,
+        contentType: 'application/pdf',
       });
 
       const response = await axios.post(
         `${AI_ENGINE_URL}/score`,
-        studentData,
+        formData,
         {
           timeout: AI_ENGINE_TIMEOUT,
           headers: {
-            'Content-Type': 'application/json',
+            ...formData.getHeaders(),
             ...(process.env.AI_ENGINE_API_KEY && {
               'Authorization': `Bearer ${process.env.AI_ENGINE_API_KEY}`,
             }),
@@ -77,6 +104,11 @@ export const aiService = {
       );
 
       const result: CreditScoreResponse = response.data;
+
+      logger.info('🔥 AI Engine Response Received', {
+        raw_response: JSON.stringify(response.data),
+        credora_score: result.credora_score,
+      });
 
       // If AI engine doesn't provide credit_limit, calculate it from score
       if (!result.credit_limit || result.credit_limit === 0) {

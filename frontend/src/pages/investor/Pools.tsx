@@ -78,7 +78,7 @@ export default function LiquidityPools() {
               transition={{ delay: 0.2 }}
             >
               <h3 className="font-semibold text-lg mb-4">Pool Health & Metrics</h3>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-2 gap-4">
                 <div className="bg-card rounded-xl border border-border p-4">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-lg bg-credora-blue/10 flex items-center justify-center">
@@ -92,35 +92,13 @@ export default function LiquidityPools() {
 
                 <div className="bg-card rounded-xl border border-border p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-credora-emerald/10 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-credora-emerald" />
+                    <div className="w-10 h-10 rounded-lg bg-credora-blue/10 flex items-center justify-center">
+                      <Droplets className="w-5 h-5 text-credora-blue" />
                     </div>
-                    <span className="text-sm text-muted-foreground">Active Borrowers</span>
+                    <span className="text-sm text-muted-foreground">Total Pool Liquidity</span>
                   </div>
-                  <p className="text-2xl font-bold">47</p>
-                  <p className="text-xs text-muted-foreground mt-1">currently borrowing</p>
-                </div>
-
-                <div className="bg-card rounded-xl border border-border p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-credora-amber/10 flex items-center justify-center">
-                      <Shield className="w-5 h-5 text-credora-amber" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Avg Credit Score</span>
-                  </div>
-                  <p className="text-2xl font-bold">742</p>
-                  <p className="text-xs text-credora-emerald mt-1">Excellent quality</p>
-                </div>
-
-                <div className="bg-card rounded-xl border border-border p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-credora-purple/10 flex items-center justify-center">
-                      <Shield className="w-5 h-5 text-credora-purple" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Repayment Rate</span>
-                  </div>
-                  <p className="text-2xl font-bold">98.8%</p>
-                  <p className="text-xs text-credora-emerald mt-1">on-time payments</p>
+                  <p className="text-2xl font-bold">{formatUSDT(parseFloat(pool.totalLiquidity))}</p>
+                  <p className="text-xs text-muted-foreground mt-1">available for lending</p>
                 </div>
               </div>
             </motion.div>
@@ -163,7 +141,7 @@ export default function LiquidityPools() {
               className="bg-card rounded-2xl border border-border p-6"
             >
               <h3 className="font-semibold text-lg mb-6">Your Investment in This Pool</h3>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Your Investment</p>
                   <p className="text-2xl font-bold">{formatUSDT(parseFloat(pool.yourInvestment))}</p>
@@ -177,10 +155,6 @@ export default function LiquidityPools() {
                   <p className="text-2xl font-bold">
                     {((parseFloat(pool.yourInvestment) / parseFloat(pool.totalLiquidity)) * 100).toFixed(2)}%
                   </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Your Earnings</p>
-                  <p className="text-2xl font-bold text-credora-emerald">+$1,440</p>
                 </div>
               </div>
               <div className="mt-6 flex gap-3">

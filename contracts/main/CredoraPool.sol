@@ -544,13 +544,13 @@ contract CredoraPool {
         // Get credit score from CreditRegistry
         uint256 score = registry.scoreOf(user);
 
-        // Return FIXED rate based on credit tier
-        if (score >= 750) {
-            return 800; // 8% APY for LOW risk (excellent credit)
-        } else if (score >= 650) {
-            return 1200; // 12% APY for MEDIUM risk (good credit)
+        // Return FIXED rate based on credit tier (0-100 scale)
+        if (score >= 75) {
+            return 800; // 8% APY for LOW risk (excellent credit, score 75-100)
+        } else if (score >= 65) {
+            return 1200; // 12% APY for MEDIUM risk (good credit, score 65-74)
         } else {
-            return 1500; // 15% APY for HIGH risk (fair/poor credit)
+            return 1500; // 15% APY for HIGH risk (fair/poor credit, score 0-64)
         }
     }
 

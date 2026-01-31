@@ -369,16 +369,6 @@ export default function StudentSettings() {
                   onChange={(e) => handleInputChange('email', e.target.value)}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Phone Number</label>
-                <input
-                  type="tel"
-                  className="credora-input w-full rounded-xl"
-                  placeholder="Enter your phone number"
-                  value={tempData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                />
-              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -392,12 +382,6 @@ export default function StudentSettings() {
                 <div>
                   <p className="font-medium">Email</p>
                   <p className="text-sm text-muted-foreground">{profile.email || 'Not set'}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between py-3">
-                <div>
-                  <p className="font-medium">Phone Number</p>
-                  <p className="text-sm text-muted-foreground">{profile.phone || 'Not set'}</p>
                 </div>
               </div>
             </div>

@@ -63,12 +63,18 @@ export const submitStudentProfile = async (
     // Get total pool liquidity from blockchain
     const poolStats = await blockchainService.getPoolStats();
     const totalLiquidity = parseFloat(poolStats.totalLiquidity);
+    
+    logger.info(`Pool Stats - Total Liquidity: ${totalLiquidity} USDT`);
+    logger.info(`Student Credit Score: ${creditScore}`);
 
     // Calculate borrowing limit
     const borrowingLimit = aiEngineService.calculateBorrowingLimit(
       creditScore,
       totalLiquidity
     );
+    
+    logger.info(`Calculated Borrow Limit: ${borrowingLimit.maxBorrowingLimit} USDT (${(borrowingLimit.maxBorrowingLimit / totalLiquidity * 100).toFixed(1)}% of pool)`);
+    logger.info(`Interest Rate: ${borrowingLimit.interestRate}%, Risk Tier: ${borrowingLimit.riskTier}`);
 
     // Save or update student profile
     const student = await StudentProfile.findOneAndUpdate(

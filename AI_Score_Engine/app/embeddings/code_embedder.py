@@ -27,16 +27,19 @@ def embed_code(code: str) -> np.ndarray:
 
 
 def code_features_from_repos(repo_codes):
+    """Extract code quality and complexity features from repository code."""
     if not repo_codes:
-        return 0.0, 0.0
+        return 0.5, 0.5  # Default neutral values instead of 0.0
 
     embeddings = [embed_code(code) for code in repo_codes if code]
     if not embeddings:
-        return 0.0, 0.0
+        return 0.5, 0.5  # Default neutral values
 
     emb = np.array(embeddings)
 
-    x3 = float(np.mean(emb))   # code quality
-    x4 = float(np.std(emb))    # complexity
+    # Normalize embeddings to 0-1 range
+    # CodeBERT embeddings typically have mean around 0, std around 0.3
+    x3 = min(max((float(np.mean(emb)) + 1.0) / 2.0, 0.0), 1.0)  # code quality (normalize around 0)
+    x4 = min(float(np.std(emb)) * 3.0, 1.0)                      # complexity (scale up std)
 
     return x3, x4

@@ -188,7 +188,7 @@ export default function CreditDetails() {
     },
     {
       factor: "GitHub Activity",
-      score: Math.min(100, Math.floor(profile.creditScore / 8.5)),
+      score: profile.creditScore, // AI engine returns 0-100
       impact: "High" as const,
       description: `Quality and consistency of code contributions (@${profile.githubUsername})`,
     },
@@ -240,6 +240,7 @@ export default function CreditDetails() {
             </div>
             <div className={`text-3xl font-bold ${getScoreColor(profile.creditScore)}`}>
               {profile.creditScore}
+              <span className="text-base text-muted-foreground font-normal"> / 100</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">Out of 100</p>
           </motion.div>
@@ -409,7 +410,7 @@ export default function CreditDetails() {
                   <p className="text-xs text-muted-foreground">Technical Score</p>
                   <CheckCircle className="h-3 w-3 text-credora-blue" />
                 </div>
-                <p className="text-2xl font-bold">{Math.min(100, Math.floor(profile.creditScore / 8.5))}</p>
+                <p className="text-2xl font-bold">{profile.creditScore}</p>
                 <p className="text-xs text-muted-foreground mt-1">GitHub activity</p>
               </div>
               <div className="bg-secondary/30 rounded-xl p-4">

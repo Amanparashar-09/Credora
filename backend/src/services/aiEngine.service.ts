@@ -73,33 +73,34 @@ class AIEngineService {
 
   /**
    * Calculate borrowing limit based on credit score and pool liquidity
+   * Credit score is on a 0-100 scale
    */
   calculateBorrowingLimit(
     creditScore: number,
     totalPoolLiquidity: number
   ): BorrowingLimit {
-    // Credit score ranges (adjust based on your AI model output)
+    // Credit score ranges (0-100 scale)
     let maxBorrowingPercentage: number;
     let interestRate: number;
     let riskTier: 'LOW' | 'MEDIUM' | 'HIGH';
 
-    if (creditScore >= 750) {
-      // Excellent credit
+    if (creditScore >= 75) {
+      // Excellent credit (75-100)
       maxBorrowingPercentage = 0.10; // 10% of pool
       interestRate = 8.0;
       riskTier = 'LOW';
-    } else if (creditScore >= 650) {
-      // Good credit
+    } else if (creditScore >= 65) {
+      // Good credit (65-74)
       maxBorrowingPercentage = 0.05; // 5% of pool
       interestRate = 12.0;
       riskTier = 'MEDIUM';
-    } else if (creditScore >= 550) {
-      // Fair credit
+    } else if (creditScore >= 50) {
+      // Fair credit (50-64)
       maxBorrowingPercentage = 0.03; // 3% of pool
       interestRate = 15.0;
       riskTier = 'MEDIUM';
     } else {
-      // Poor credit
+      // Poor credit (0-49)
       maxBorrowingPercentage = 0.01; // 1% of pool
       interestRate = 20.0;
       riskTier = 'HIGH';

@@ -380,9 +380,25 @@ class BlockchainService {
     );
 
     try {
+      console.log('[Credit Check] Checking validity for:', userAddress);
+      
       const isValid = await contract.isValid(userAddress);
+      console.log('[Credit Check] isValid result:', isValid);
       
       if (!isValid) {
+        // Check if registered and why not valid
+        const isRegistered = await contract.isWalletRegistered(userAddress);
+        const [limit, expiry] = await contract.getCreditLimit(userAddress);
+        const score = await contract.scoreOf(userAddress);
+        
+        console.log('[Credit Check] Not valid - Details:', {
+          isRegistered,
+          limit: ethers.formatUnits(limit, 18),
+          expiry: new Date(Number(expiry) * 1000),
+          score: Number(score),
+          currentTime: new Date(),
+        });
+        
         return {
           isValid: false,
           limit: '0',
@@ -391,6 +407,13 @@ class BlockchainService {
       }
 
       const [limit, expiry] = await contract.getCreditLimit(userAddress);
+      const score = await contract.scoreOf(userAddress);
+      
+      console.log('[Credit Check] Valid! Details:', {
+        limit: ethers.formatUnits(limit, 18),
+        expiry: new Date(Number(expiry) * 1000),
+        score: Number(score),
+      });
       
       return {
         isValid: true,

@@ -27,8 +27,8 @@ const creditHistorySchema = new Schema<ICreditHistory>(
     score: {
       type: Number,
       required: true,
-      min: 300,
-      max: 1000,
+      min: 0,
+      max: 100,
     },
     limit: {
       type: String,

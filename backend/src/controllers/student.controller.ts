@@ -33,7 +33,6 @@ export const studentController = {
           university: student.university,
           major: student.major,
           graduationYear: student.graduationYear,
-          phoneNumber: student.phoneNumber,
           creditScore: student.creditScore,
           creditLimit: student.creditLimit,
           creditExpiry: student.creditExpiry,
@@ -52,7 +51,7 @@ export const studentController = {
    */
   async updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { email, name, dateOfBirth, university, major, graduationYear, phoneNumber } = req.body;
+      const { email, name, dateOfBirth, university, major, graduationYear } = req.body;
 
       const student = await Student.findOneAndUpdate(
         { walletAddress: req.user!.address },
@@ -64,7 +63,6 @@ export const studentController = {
             university,
             major,
             graduationYear,
-            phoneNumber,
             lastActive: new Date(),
           },
         },
@@ -236,12 +234,58 @@ export const studentController = {
         throw new ValidationError('Please upload required documents first');
       }
 
-      // Prepare data for AI scoring
+      // Get StudentProfile with required fields
+      const { StudentProfile } = await import('../models/StudentProfile');
+      const profile = await StudentProfile.findOne({ walletAddress: req.user!.address });
+      
+      if (!profile) {
+        throw new ValidationError('Please complete your profile first (GitHub username, GPA, internships)');
+      }
+
+      if (!profile.githubUsername) {
+        throw new ValidationError('GitHub username is required for credit scoring');
+      }
+
+      if (profile.gpa === undefined || profile.gpa === null) {
+        throw new ValidationError('GPA is required for credit scoring');
+      }
+
+      if (profile.gpa < 0 || profile.gpa > 10) {
+        throw new ValidationError('GPA must be between 0 and 10');
+      }
+
+      // Get resume document
+      const resumeDoc = await Document.findOne({
+        studentAddress: req.user!.address,
+        documentType: 'resume',
+      }).sort({ uploadedAt: -1 }); // Get most recent resume
+
+      if (!resumeDoc) {
+        throw new ValidationError('Please upload your resume (PDF) first');
+      }
+
+      // Decrypt and read resume file
+      const resumeBuffer = await encryptionService.readEncryptedFile(
+        resumeDoc.encryptedPath,
+        resumeDoc.encryptionIV
+      );
+
+      if (!resumeBuffer || resumeBuffer.length === 0) {
+        throw new ValidationError('Resume file is empty or corrupted');
+      }
+
+      // Validate PDF format
+      if (!resumeDoc.fileName.toLowerCase().endsWith('.pdf')) {
+        throw new ValidationError('Resume must be a PDF file');
+      }
+
+      // Prepare data for AI scoring (matching AI engine requirements)
       const scoringData = {
-        university: student.university || 'Unknown',
-        major: student.major || 'Unknown',
-        graduationYear: student.graduationYear || new Date().getFullYear(),
-        // Add more fields as needed
+        github_username: profile.githubUsername,
+        gpa: profile.gpa,
+        internships: profile.internships || 0,
+        resumeBuffer: resumeBuffer,
+        resumeFilename: resumeDoc.fileName,
       };
 
       // Call AI engine
@@ -288,18 +332,25 @@ export const studentController = {
    */
   async getAttestationData(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const student = await Student.findOne({ walletAddress: req.user!.address });
+      const [student, studentProfile] = await Promise.all([
+        Student.findOne({ walletAddress: req.user!.address }),
+        StudentProfile.findOne({ walletAddress: req.user!.address })
+      ]);
       
       if (!student) {
         throw new NotFoundError('Student profile not found');
       }
 
-      if (!student.creditScore || !student.creditLimit) {
+      // Check StudentProfile first, fallback to Student
+      const creditScore = studentProfile?.creditScore || student.creditScore || 0;
+      const creditLimit = studentProfile?.maxBorrowingLimit || parseFloat(student.creditLimit || '0');
+
+      if (!creditScore || !creditLimit) {
         throw new ValidationError('Please complete credit scoring first');
       }
 
-      // Calculate credit limit from score if it's 0 or missing
-      let creditLimitInUsdt: number;
+      // Use the credit limit directly (already in USDT)
+      let creditLimitInUsdt: number = creditLimit;
       const storedLimit = student.creditLimit;
       
       // Check if the stored limit is in wei format (very large number, > 1e15)
@@ -325,7 +376,7 @@ export const studentController = {
       // Create fresh attestation (this fetches on-chain nonce internally)
       const { attestation, signature } = await oracleService.createCreditAttestation(
         req.user!.address,
-        student.creditScore,
+        creditScore,  // Use the computed creditScore with StudentProfile fallback
         creditLimitInUsdt
       );
 
@@ -557,6 +608,22 @@ export const studentController = {
   },
 
   /**
+   * Get on-chain credit status for debugging
+   */
+  async getOnChainCredit(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const onChainData = await blockchainService.checkOnChainCredit(req.user!.address);
+      
+      res.json({
+        success: true,
+        data: onChainData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
    * Get dashboard data
    */
   async getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
@@ -662,3 +729,4 @@ export const studentController = {
     }
   },
 };
+ 

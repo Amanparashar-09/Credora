@@ -8,7 +8,6 @@ export interface IStudent extends Document {
   university?: string;
   major?: string;
   graduationYear?: number;
-  phoneNumber?: string;
   
   // Credit Information
   creditScore: number;
@@ -59,13 +58,12 @@ const studentSchema = new Schema<IStudent>(
     university: String,
     major: String,
     graduationYear: Number,
-    phoneNumber: String,
 
     creditScore: {
       type: Number,
-      default: 500, // Default to middle of range (300-1000)
-      min: 300,
-      max: 1000,
+      default: 0, // Default to 0 (unscored) - AI engine returns 0-100
+      min: 0,
+      max: 100,
     },
     creditLimit: {
       type: String,

@@ -43,6 +43,49 @@ const getMockUSDT = () => {
 
 export const blockchainService = {
   /**
+   * Check on-chain credit data for debugging
+   */
+  async checkOnChainCredit(userAddress: string): Promise<{
+    score: number;
+    limit: string;
+    expiry: number;
+    isValid: boolean;
+    isRegistered: boolean;
+    isEligible: boolean;
+    currentTime: number;
+  }> {
+    try {
+      const creditRegistry = getCreditRegistry();
+      const credoraPool = getCredoraPool();
+      
+      const [score, limit, expiry, isRegistered, isEligible] = await Promise.all([
+        creditRegistry.scoreOf(userAddress),
+        creditRegistry.limitOf(userAddress),
+        creditRegistry.expiryOf(userAddress),
+        creditRegistry.isRegistered(userAddress),
+        credoraPool.checkBorrowEligibility(userAddress),
+      ]);
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      const expiryNum = Number(expiry);
+      const isValid = expiryNum >= currentTime;
+
+      return {
+        score: Number(score),
+        limit: ethers.formatUnits(limit, 18),
+        expiry: expiryNum,
+        isValid,
+        isRegistered,
+        isEligible,
+        currentTime,
+      };
+    } catch (error: any) {
+      logger.error('Failed to check on-chain credit:', error.message);
+      throw new Error('Failed to check on-chain credit status');
+    }
+  },
+
+  /**
    * Get credit limit for a student from CreditRegistry
    */
   async getCreditLimit(studentAddress: string): Promise<{
